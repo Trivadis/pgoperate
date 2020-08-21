@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+
+# Copyright 2020 Trivadis AG <info@trivadis.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+#  Created on 07.2019 by Aychin Gasimov
+#
+# Change log:
+#   06.07.2020: Aychin: Initial version created
+
+
+function help() {
+	echo "
+
+Available options:
+  
+  --create-cluster         Create new PostgreSQL Cluster
+  --backup                 Backup PostgreSQL CLuster
+  --restore                Restore PostgreSQL Cluster
+  --check                  Execute monitoring checks
+  --create-slave           Create Slave PostgreSQL Cluster and configure streaming replication
+  --promote                Promote Slave cluster to Master
+  --reinstate              Convert old Master to Slave and start streaming replication
+  --prepare-master         Prepare PostgreSQL Cluster for Master role
+  
+  For each option you can get help by adding \"help\" keyword after the argument, like:
+    pgoperate --backup help
+
+	"
+}
+
+case $1 in
+
+  --backup) shift
+            $PGOPERATE_BASE/bin/backup.sh "$@"
+            ;;
+
+  --restore) shift
+            $PGOPERATE_BASE/bin/restore.sh "$@"
+            ;;  
+
+  --check) shift
+            $PGOPERATE_BASE/bin/check.sh "$@"
+            ;;  
+
+  --create-cluster) shift
+            $PGOPERATE_BASE/bin/create_cluster.sh "$@"
+            ;;  
+
+  --reinstate) shift
+            $PGOPERATE_BASE/bin/reinstate.sh "$@"
+            ;;  
+
+  --promote) shift
+            $PGOPERATE_BASE/bin/promote.sh "$@"
+            ;;  
+
+  --prepare-master) shift
+            $PGOPERATE_BASE/bin/prepare_master.sh "$@"
+            ;;  
+
+  --create-slave) shift
+            $PGOPERATE_BASE/bin/create_slave.sh "$@"
+            ;;  
+
+  --help|-h) help
+            ;;  
+
+
+
+  *) echo -e
+     echo "ERROR: Invalid option specified."
+     help
+     exit 1
+     ;;
+esac

@@ -1,0 +1,479 @@
+# Checks library.
+#
+# Each check function must return 0 on check success and other number on negative.
+# Check function can return a payload message in the variable <function name>_PAYLOAD.
+#
+# Special variables which can be used inside the function:
+#    <function name>_PAYLOAD     - Output variable, assign output text to it.
+#    <function name>_PAYLOADLONG - Output variable, assign extra output text to it. \n can be used to divide text to new lines.
+#    <function_name>_THRESHOLD   - Input variable, if there was threshold defined, it will be assigned to this variable.
+#    <function_name>_OCCURRENCE  - Input variable, if there was occurrence defined, it will be assigned to this variables.
+#    <function_name>_FAILCOUNT   - Output variable, this variable will be set by get_fail_count function.
+#
+# Special functions that can be used inside the function:
+#    exec_pg <cmd>   - Will execute cmd in postgres and return psql return code, output will go to stdout.
+#    get_fail_count - Will get the number of times this function returned unsuccessful result. It will be assigned to 
+#                     <function_name>_FAILCOUNT variable.
+#
+#
+# You can use all variables from parameters.conf file in check functions.
+#
+# Other variables available:
+#   $PG_BIN_HOME  - Points to the bin directory of the postgresql.
+#   $PG_AVAILABLE - Will be true if database cluster available and false if not available.
+#
+# Example:
+#
+# check_file_exists() {
+#  if [[ -f myfile ]]; then
+#     check_file_exists_PAYLOAD="File myfile was found."
+#     return 0
+#  else
+#  	  get_fail_count
+#  	  ((check_file_exists_FAILCOUNT++))  # We increment FAILCOUNT here to count also current failure.
+#     check_file_exists_PAYLOAD="File myfile was not found. Failed checks count $check_file_exists_FAILCOUNT"
+#     return 1
+#  fi
+# }
+#
+#
+
+
+# This check will check the size of the WAL files in pg_wal directory.
+# If the size of the WAL files will exceed the size defined by max_wal_size parameter
+# more than defined by threshold percent, then after defined occurrences alarm will be generated.
+check_wal_count() {
+ 
+ [[ "$PG_AVAILABLE" == false ]] && check_wal_count_PAYLOAD="Database cluster not reachable!" && return 1
+
+ local wal_stats="$(exec_pg "select count(*)||':'||sum(size) from pg_ls_waldir() where name ~ '^[0-9A-F]+$'" | xargs)"
+ local max_wal_size="$(exec_pg "select pg_size_bytes(setting||unit) from pg_settings where name='max_wal_size'" | xargs)"
+
+ local wal_count=${wal_stats//:*}
+ local wal_curr_size=${wal_stats//*:}
+
+ local successmsg="WAL files count is $wal_count, the current WAL size $((wal_curr_size/1024/1024))MB not exceed max_wal_size $((max_wal_size/1024/1024))MB more than ${check_wal_count_THRESHOLD}% threshold."
+
+ if [[ $wal_curr_size -le $max_wal_size ]]; then
+ 	check_wal_count_PAYLOAD="$successmsg"
+ 	return 0
+ else
+ 
+    local wal_size_diff=$((wal_curr_size-max_wal_size))
+    local over_pct=$((wal_size_diff*100/wal_curr_size))
+    
+    if [[ $over_pct -gt $check_wal_count_THRESHOLD ]]; then
+ 	    check_wal_count_PAYLOAD="WAL files count is $wal_count, the current WAL size $((wal_curr_size/1024/1024))MB exceeds max_wal_size $((max_wal_size/1024/1024))MB more than ${check_wal_count_THRESHOLD}% threshold."
+        return 1
+    else
+        check_wal_count_PAYLOAD="$successmsg"
+  	    return 0	
+    fi
+ fi
+}
+
+
+# This check will check if autovacuum enabled on the database cluster. If not enabled then will be alerted.
+# If enabled then will be checked for the tabled with number rows more than 10000 if they have dead rows more than live rows.
+# Threshold defines % of dead rows to live rows. In additional information the list of the tables will be returned.
+# Format of the tables list: db:schema:table:num_live_rows:num_dead_rows
+check_dead_rows() {
+ local table_rows_threshold=10000
+
+ [[ "$PG_AVAILABLE" == false ]] && check_dead_rows_PAYLOAD="Database cluster not reachable!" && return 1
+
+ local autovac_status="$(exec_pg "select setting from pg_settings where name='autovacuum'" | xargs)"
+ local track_status="$(exec_pg "select setting from pg_settings where name='track_counts'" | xargs)"
+
+ if [[ "$autovacuum_status" != "on" && "$track_status" != "on" ]]; then
+ 	check_dead_rows_PAYLOAD="Autovacuum process cannot run on this cluster. Parameter autovacuum=$autovac_status and parameter track_counts=$track_status. Both must be on."
+    return 1
+ fi
+
+
+ local dbname
+ local found=false
+ local tables 
+ local all_tables
+ while read dbname; do
+   tables="$(exec_pg "SELECT '${dbname}:'||schemaname||':'||relname||':'||n_live_tup||':'||n_dead_tup FROM pg_stat_user_tables where n_live_tup+n_dead_tup > ${table_rows_threshold} and (case when n_live_tup=0 then 100 else n_dead_tup*100/n_live_tup end) > ${check_dead_rows_THRESHOLD}" $dbname | xargs)"
+   [[ ! -z $tables ]] && found=true
+   all_tables="$all_tables\n$tables"
+   tables=""
+ done < <(exec_pg "select datname from pg_database where datname not in ('postgres','template1','template0')" | xargs)
+ 
+ if [[ "$found" == true ]]; then
+ 	check_dead_rows_PAYLOAD="There are tables in non-default databases where number of dead rows consists more than ${check_dead_rows_THRESHOLD}% of live rows."
+ 	check_dead_rows_PAYLOADLONG="$all_tables"
+ 	return 1
+ else
+ 	check_dead_rows_PAYLOAD="The autovacuum process is enabled and there are no tables with critical count of dead rows."
+ 	return 0
+ fi
+
+}
+
+
+# This function will be used in standby checks to get connect info from recovery.conf to connect to master.
+get_master_connectinfo() {
+  local tmp="$(grep primary_conninfo $PGSQL_BASE/data/recovery.conf | grep -oE "'.+'")"
+  tmp="${tmp//\'/}"
+  tmp="${tmp//\!/\\!}"
+  echo "$tmp dbname=postgres connect_timeout=10"
+}
+
+
+# This check will check if standby database in streaming mode and if master reachable or not.
+check_stdby_status() {
+
+ [[ "$PG_AVAILABLE" == false ]] && check_stdby_status_PAYLOAD="Database cluster not reachable!" && return 1
+     
+ local is_standby="$(exec_pg "select pg_is_in_recovery()" | xargs)"
+ if [[ "$is_standby" == "f" ]]; then
+    check_stdby_status_PAYLOAD="Not a standby database."
+    return 0
+ fi
+	
+ local wal_receiver_status="$(exec_pg "select status from pg_stat_wal_receiver" | xargs)"
+ local is_apply_paused="$(exec_pg "select pg_is_wal_replay_paused()" | xargs)"
+ 
+ [[ "$is_apply_paused" == "t" ]] && local apply_status="paused" || local apply_status="not paused"
+
+ local conn_output
+ if [[ "$wal_receiver_status" != "streaming" ]]; then
+   local master_conninfo="$(get_master_connectinfo)"
+   conn_output=$($PG_BIN_HOME/psql "$master_conninfo" -c "\conninfo" 2>&1)
+   if [[ $? -gt 0 ]]; then
+      check_stdby_status_PAYLOAD="WAL receiver is not streaming. Apply status is $apply_status. Master connection failed."
+      check_stdby_status_PAYLOADLONG="$conn_output"
+   else
+      check_stdby_status_PAYLOAD="WAL receiver is not streaming. Apply status is $apply_status. Master connection is OK."
+   fi
+   return 1
+
+ else
+   check_stdby_status_PAYLOAD="WAL receiver is in streaming mode. Apply status is $apply_status."
+   return 0    
+ fi
+
+}
+
+
+# Check the apply lag in minutes, time between last transaction commited on master and last applied on standby. Threshold defined in minutes. 
+check_stdby_ap_lag_time() {
+ [[ "$PG_AVAILABLE" == false ]] && check_stdby_ap_lag_time_PAYLOAD="Database cluster not reachable!" && return 1
+     
+ local is_standby="$(exec_pg "select pg_is_in_recovery()" | xargs)"
+ if [[ "$is_standby" == "f" ]]; then
+    check_stdby_ap_lag_time_PAYLOAD="Not a standby database."
+    return 0
+ fi
+	
+ local last_apply_time="$(exec_pg "SELECT EXTRACT(EPOCH FROM pg_last_xact_replay_timestamp())" | xargs)"
+
+ local last_master_commit_time
+ local master_conninfo="$(get_master_connectinfo)"
+
+ last_master_commit_time=$($PG_BIN_HOME/psql "$master_conninfo" -c "SELECT EXTRACT(EPOCH FROM timestamp) from pg_last_committed_xact()" -t 2>&1)
+ if [[ $? -gt 0 ]]; then
+    check_stdby_ap_lag_time_PAYLOAD="Cannot connect to master. Muster unreachable!"
+    return 1
+ fi
+
+ last_master_commit_time=$(echo $last_master_commit_time | xargs)
+
+ if [[ -z $last_master_commit_time ]]; then
+    check_stdby_ap_lag_time_PAYLOAD="Cannot identify master last commit time. No activity on master or track_commit_timestamp not set to on!"
+    return 0
+ fi
+    
+ last_apply_time=${last_apply_time//.*}
+ last_master_commit_time=${last_master_commit_time//.*}
+
+ local delay_secs=$((last_master_commit_time-last_apply_time))
+ local delay_mins=$((delay_secs/60))
+  
+ if [[ $delay_mins -ge $check_stdby_ap_lag_time_THRESHOLD ]]; then
+    check_stdby_ap_lag_time_PAYLOAD="Current apply lag between master and standby is ${delay_mins} minutes, more than defined threshold $check_stdby_ap_lag_time_THRESHOLD!"
+    return 1
+ else
+    check_stdby_ap_lag_time_PAYLOAD="Current apply lag between master and standby is ${delay_mins} minutes."
+    return 0
+ fi
+
+}
+
+
+
+
+
+
+# Check the transfer delay in megabytes. Threshold defined in megabytes. 
+check_stdby_tr_delay_mb() {
+ [[ "$PG_AVAILABLE" == false ]] && check_stdby_tr_delay_mb_PAYLOAD="Database cluster not reachable!" && return 1
+     
+ local is_standby="$(exec_pg "select pg_is_in_recovery()" | xargs)"
+ if [[ "$is_standby" == "f" ]]; then
+    check_stdby_tr_delay_mb_PAYLOAD="Not a standby database."
+    return 0
+ fi
+	
+ local last_master_lsn
+ local master_conninfo="$(get_master_connectinfo)"
+ 
+ last_master_lsn=$($PG_BIN_HOME/psql "$master_conninfo" -c "select pg_current_wal_lsn()" -t 2>&1)
+ if [[ $? -gt 0 ]]; then
+    check_stdby_tr_delay_mb_PAYLOAD="Cannot connect to master. Muster unreachable!"
+    return 1
+ fi
+
+ local delay_bytes="$(exec_pg "select pg_wal_lsn_diff('$( echo $last_master_lsn | xargs)', pg_last_wal_receive_lsn())" | xargs)"
+ local delay_mb=$((delay_bytes/1024/1024))
+  
+ if [[ $delay_mb -ge $check_stdby_tr_delay_mb_THRESHOLD ]]; then
+    check_stdby_tr_delay_mb_PAYLOAD="Current transfer delay between master and standby is ${delay_mb}MB, more than defined threshold $check_stdby_tr_delay_mb_THRESHOLD!"
+    return 1
+ else
+    check_stdby_tr_delay_mb_PAYLOAD="Current transfer delay between master and standby is ${delay_mb}MB."
+    return 0
+ fi
+
+}
+
+
+
+# Check the apply delay in megabytes, megabytes difference between received and applied WAL records. Threshold defined in megabytes. 
+check_stdby_apply_delay_mb() {
+ [[ "$PG_AVAILABLE" == false ]] && check_stdby_apply_delay_mb_PAYLOAD="Database cluster not reachable!" && return 1
+     
+ local is_standby="$(exec_pg "select pg_is_in_recovery()" | xargs)"
+ if [[ "$is_standby" == "f" ]]; then
+    check_stdby_apply_delay_mb_PAYLOAD="Not a standby database."
+    return 0
+ fi
+
+ local delay_bytes="$(exec_pg "select pg_wal_lsn_diff(pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn())" | xargs)"
+ local delay_mb=$((delay_bytes/1024/1024))
+  
+ if [[ $delay_mb -ge $check_stdby_apply_delay_mb_THRESHOLD ]]; then
+    check_stdby_apply_delay_mb_PAYLOAD="Current apply delay between received and applied lsn is ${delay_mb}MB, more than defined threshold $check_stdby_apply_delay_mb_THRESHOLD!"
+    return 1
+ else
+    check_stdby_apply_delay_mb_PAYLOAD="Current apply delay between received and applied lsn is ${delay_mb}MB."
+    return 0
+ fi
+
+}
+
+
+
+# Check the number of current connections in defined threshold range. Threshold defined as % of max_connections.
+check_max_conn() {
+ [[ "$PG_AVAILABLE" == false ]] && check_max_conn_PAYLOAD="Database cluster not reachable!" && return 1
+
+ local max_all_connects="$(exec_pg "select setting from pg_settings where name='max_connections'" | xargs)"
+ local max_super_connects="$(exec_pg "select setting from pg_settings where name='superuser_reserved_connections'" | xargs)"
+ local max_connections=$((max_all_connects-max_super_connects))
+ local max_thld_connections=$((max_connections*check_max_conn_THRESHOLD/100))
+ local current_connections="$(exec_pg "select count(*) from pg_stat_activity" | xargs)"
+ 
+ if [[ $current_connections -ge $max_thld_connections ]]; then
+ 	check_max_conn_PAYLOAD="Number of connections $current_connections is more or equal to the threshold value $max_thld_connections. Maximum allowed non-superuser is $max_connections."
+ 	return 1
+ else
+ 	check_max_conn_PAYLOAD="Number of connections $current_connections is in range. Threshold value $max_thld_connections. Maximum allowed non-superuser is $max_connections."
+ 	return 0
+ fi
+}
+
+
+
+
+check_logfiles() {
+   
+   [[ -z $PGSQL_BASE ]] && check_logfiles_PAYLOAD="Parameter PGSQL_BASE not defined, cannot execute this check." && return 1
+
+   local storage=$PGSQL_BASE/etc/.check_logfiles
+
+   [[ -f $storage ]] && . $storage
+
+   local pattern="$check_logfiles_THRESHOLD"
+
+   if [[ -z $last_check_file ]]; then
+     files_list="$(ls -1tr $PGSQL_BASE/log/postgresql-*.log)"
+     last_check_line=0
+   else
+     files_list="$(find $PGSQL_BASE/log -type f -cnewer $PGSQL_BASE/log/$last_check_file -name "postgresql-*.log" | xargs ls -1tr $PGSQL_BASE/log/$last_check_file)"    
+   fi
+ 
+   [[ -z $server_log_last_line ]] && server_log_last_line=0
+   [[ -z $last_check_line ]] && last_check_line=0
+
+   local global_data=""
+   local logfile
+   local found=false
+   local msg_count=0
+
+   while read logfile; do
+
+     local logfilebasename="$(basename $logfile)"
+
+     [[ "$logfilebasename" == "$last_check_file" ]] && check_from_line=$last_check_line || check_from_line=0
+
+     local num_lines=$(wc -l $logfile | awk '{print $1}')
+     local from_line=$((num_lines-check_from_line))
+     [[ $from_line -lt 0 ]] && from_line=0
+
+     local target_data="$(cat -n $logfile | tail -$from_line | grep -E "($pattern)")"
+     if [[ ! -z $target_data ]]; then
+     	 found=true
+     else
+     	 last_check_line=$((check_from_line+from_line))
+     	 last_check_file=$logfilebasename
+         continue
+     fi
+
+     last_check_line=$(echo "$target_data" | tail -1 | awk '{print $1}')
+     [[ -z $last_check_line ]] && last_check_line=$num_lines
+     last_check_file=$logfilebasename
+
+     # deduplicate
+     local deduplicated_data=""
+     local i=0
+     local p=""
+     local line
+     
+     while read line; do
+       local c="$(echo $line | grep -Eo "($pattern): .+$" )"
+
+       if [[ "$c" != "$p" || -z $p ]]; then
+         if [[ $i -gt 0 ]]; then 
+           deduplicated_data="$deduplicated_data
+-- Previous message repeated $i more times --
+$logfilebasename $line"
+         else
+           deduplicated_data="$deduplicated_data
+$logfilebasename $line"
+
+         fi
+         i=0
+         local p="$c"
+         local pline="$line"
+       else
+         ((i++))
+       fi
+
+     ((msg_count++))
+     done < <(echo "$target_data")
+
+     if [[ $i -gt 0 ]]; then 
+           deduplicated_data="$deduplicated_data
+-- Previous message repeated $i more times --"
+     fi
+
+     global_data="$global_data
+$deduplicated_data"
+
+   done < <(echo "$files_list")
+
+# - server.log
+   logfile="$PGSQL_BASE/log/server.log"
+   if [[ -f $logfile ]]; then
+     local num_lines=$(wc -l $logfile | awk '{print $1}')
+     local from_line=$((num_lines-server_log_last_line))
+     
+     [[ $from_line -lt 0 ]] && from_line=0
+
+     local target_data="$(cat -n $logfile | tail -$from_line | grep -E "($pattern)")"
+     if [[ ! -z $target_data ]]; then 
+     	found=true
+
+     server_log_last_line=$(echo "$target_data" | tail -1 | awk '{print $1}')
+     [[ -z $server_log_last_line ]] && server_log_last_line=$num_lines
+
+     local deduplicated_data=""
+     local i=0
+     local p=""
+     local line
+     
+     while read line; do
+       local c="$(echo $line | grep -Eo "($pattern): .+$" )"
+
+       if [[ "$c" != "$p" || -z $p ]]; then
+         if [[ $i -gt 0 ]]; then 
+           deduplicated_data="$deduplicated_data
+-- Previous message repeated $i more times --
+server.log $line"
+         else
+           deduplicated_data="$deduplicated_data
+server.log $line"
+
+         fi
+         i=0
+         local p="$c"
+         local pline="$line"
+       else
+         ((i++))
+       fi
+
+     ((msg_count++))
+     done < <(echo "$target_data")
+
+     if [[ $i -gt 0 ]]; then 
+           deduplicated_data="$deduplicated_data
+-- Previous message repeated $i more times --"
+     fi
+
+     global_data="$global_data
+$deduplicated_data"
+     
+     else
+     	server_log_last_line=$((server_log_last_line+from_line))
+     fi
+   fi
+# - server.log
+
+
+echo "
+last_check_line=$last_check_line
+last_check_file=$last_check_file
+server_log_last_line=$server_log_last_line" > $storage
+
+if [[ "$found" == true ]]; then
+   check_logfiles_PAYLOAD="There are messages matching the search pattern $check_logfiles_THRESHOLD in logfiles. Number messages found $msg_count."
+   check_logfiles_PAYLOADLONG="$global_data"
+   return 1
+else
+   check_logfiles_PAYLOAD="There are no messages matching the search pattern $check_logfiles_THRESHOLD in logfiles."
+   return 0
+fi
+
+}
+
+
+
+
+
+
+check_sapce_usage() {
+  [[ -z $PGSQL_BASE ]] && check_sapce_usage_PAYLOAD="Parameter PGSQL_BASE not defined, cannot execute this check." && return 1
+  
+  local usage_info=$(df $PGSQL_BASE | tail -1 | awk '{print $5":"$6}')
+   
+  local pct_used=${usage_info//:*}
+  local mount_point=${usage_info//*:}
+  
+  pct_used=${pct_used//%*}
+
+  if [[ $pct_used -ge $check_sapce_usage_THRESHOLD ]]; then
+     check_sapce_usage_PAYLOAD="The mount point $mount_point on which cluster data directory resides is ${pct_used}% used. Threshold is ${check_sapce_usage_THRESHOLD}%."
+     return 1
+  else
+     check_sapce_usage_PAYLOAD="The mount point $mount_point on which cluster data directory resides is ${pct_used}% used. Threshold is ${check_sapce_usage_THRESHOLD}%."  
+     return 0
+  fi
+
+}
+
+
+
