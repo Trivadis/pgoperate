@@ -526,6 +526,12 @@ if [[ "${BACKUP_MODE,,}" == "full" ]]; then
   fi
  # rm -f .pwdfile_pg_basebackup
 
+
+  printheader "Backup configuration files."
+  mkdir -p $CURR_BACKUP_DIR/cfgs
+  cp $PGSQL_BASE/etc/*.conf $CURR_BACKUP_DIR/cfgs
+
+
   chown postgres:postgres $CURR_BACKUP_DIR/data/*
 
   if [[ "$SWITCH_ARCH_LOC" == true ]]; then
