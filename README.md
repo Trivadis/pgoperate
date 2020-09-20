@@ -129,6 +129,7 @@ $PGSQL_BASE ┐
 It will contain scripts related to current cluster.
 
 `root.sh` - Must be executed as root user after cluster creation. It will register `postgresql-<alias>` unit by systemctl daemon and finalize cluster creation.
+
 `start.sh` - Script to start PostgreSQL with `pg_ctl` utility. Can be used for special cases, it is recommended to use `sudo systmctl` to manage PostgreSQL instance.
 
 #### etc
@@ -144,6 +145,7 @@ The `$PGDATA` folder of the current cluster.
 Main location to all log files related to the current cluster.
 
 `server.log` - Is the cluster main log file. Any problems during cluster startup will be logged here. After successful start logging will be handed over to logging collector.
+
 `postgresql-<n>.log` - Logging collector output files. By default PgOperate will use day of the month in place of n.
 
 Sub-folder `tools` will include output logs from all the PgOperate scripts. Any script executed will log its output into this directory. Log filename will include script name and timestamp. First two lines of the logfile will be the list of arguments used to execute script and the current user id.
