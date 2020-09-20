@@ -1,6 +1,13 @@
 
 _IS_ROOT="$(id -u)"
 
+prepare_logdir() {
+  mkdir -p $PGSQL_BASE/log/tools
+  local rdays
+  [[ -z $TOOLS_LOG_RETENTION_DAYS ]] && rdays=30 || rdays=$TOOLS_LOG_RETENTION_DAYS
+  find $PGSQL_BASE/log/tools -mtime +$rdays -exec rm -f {} \;
+}
+
 modifyFile() {
   local v_file=$1
   local v_op=$2
@@ -45,7 +52,6 @@ modifyFile() {
   fi
   return 0
 }
-
 
 
 set_conf_param() {

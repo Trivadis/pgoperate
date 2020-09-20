@@ -99,13 +99,14 @@ PG_BIN_HOME=$TVD_PGHOME/bin
 
 
 PARAMETERS_FILE=$PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf
-
 [[ ! -f $PARAMETERS_FILE ]] && echo "Cannot find configuration file $PARAMETERS_FILE." && exit 1
 [[ ! -f $PGOPERATE_BASE/lib/shared.lib ]] && echo "Cannot read $PGOPERATE_BASE/lib/shared.lib file." && exit 1
 source $PARAMETERS_FILE
 source $PGOPERATE_BASE/lib/shared.lib
 
-
+# Define log file
+prepare_logdir
+declare -r LOGFILE="$PGSQL_BASE/log/tools/$(basename $0)_$(date +"%Y%m%d_%H%M%S").log"
 
 # Default port
 [[ -z $PG_PORT ]] && PG_PORT=5432
@@ -403,7 +404,13 @@ fi
 
 ########### MAIN ########################################
 
+# Script main part begins here. Everything in curly braces will be logged in logfile
+{
 
+echo "Command line arguments: $@" >> $LOGFILE
+echo "Current user id: $(id)" >> $LOGFILE
+echo "--------------------------------------------------------------------------------------------------------------------------------" >> $LOGFILE
+echo -e >> $LOGFILE
 
 [[ -z $BACKUP_LOCATION ]] && error "BACKUP_LOCATION is not defined. Check parameters.conf." && exit 1
 
@@ -551,3 +558,6 @@ echo "Backup finished."
 
 exit 0
 
+} 2>&1 | tee -a $LOGFILE
+
+exit ${PIPESTATUS[0]}

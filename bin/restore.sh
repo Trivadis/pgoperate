@@ -31,8 +31,8 @@ echo "
     backup_dir=<directory>      - One time backup location. Will be used as restore source.
     from_subdir=<subdir>        - Execute restore from specified sub-directory number. Use 'list' to check all sub directory numbers. It must be number without date part.
     until_time=<date and time>  - To execute Point in Time recovery. Specify target time. Time must be in \"YYYY-MM-DD HH24:MI:SS\" format.
-    pause                       - Will set recovery_target_action to pause in recovery.conf. When Point In Time will be reached, recovery will pause.
-    shutdown                    - Will set recovery_target_action to shutdown in recovery.conf. When Point In Time will be reached, database will shutdown.
+    pause                       - Will set recovery_target_action to pause in recovery.conf or postgresql.conf. When Point In Time will be reached, recovery will pause.
+    shutdown                    - Will set recovery_target_action to shutdown in recovery.conf or postgresql.conf. When Point In Time will be reached, database will shutdown.
     verify                      - If this argument specified, then no actual restore will be execute. Use to check which subfolder will be used to restore.
 
  Examples:
@@ -62,7 +62,13 @@ PG_BIN_HOME=$TVD_PGHOME/bin
 PARAMETERS_FILE=$PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf
 [[ ! -f $PARAMETERS_FILE ]] && echo "Cannot find configuration file $PARAMETERS_FILE." && exit 1
 source $PARAMETERS_FILE
+[[ ! -f $PGOPERATE_BASE/lib/shared.lib ]] && echo "Cannot read $PGOPERATE_BASE/lib/shared.lib file." && exit 1
+source $PGOPERATE_BASE/lib/shared.lib
 
+
+# Define log file
+prepare_logdir
+declare -r LOGFILE="$PGSQL_BASE/log/tools/$(basename $0)_$(date +"%Y%m%d_%H%M%S").log"
 
 
 declare -r RECENT_WAL_LOCATION=/tmp/recent_pg_wal
@@ -90,7 +96,6 @@ error() {
 info() {
   echo -e "INFO: $1"
 }
-
 
 
 list_backup_dir() {
@@ -230,13 +235,6 @@ local backupdir=$1
 local untiltime="$2"
 local tmpdir="/tmp/pgrestore_pg_wal"
 
-
-
-
-######## MAIN #######################################
-
-
-
 printheader "Stopping database cluster."
 
 #local current_wal=$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -c "SELECT file_name from pg_walfile_name_offset(pg_current_wal_lsn());" -t | xargs)
@@ -305,22 +303,41 @@ if [[ -f $PGSQL_BASE/data/tablespace_map && $(cat $PGSQL_BASE/data/tablespace_ma
 
 fi
 
-printheader "Creating $PGSQL_BASE/recovery.conf."
-[[ ! -z $untiltime ]] && local untiltimeline="recovery_target_time = '$untiltime'" || local untiltimeline=""
-echo "restore_command = 'cp $backupdir/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'
+if [[ $TVD_PGVERSION -ge 12 ]]; then 
+   printheader "Updating $PGSQL_BASE/postgresql.conf."
+   if [[ ! -z $untiltime ]]; then
+      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_time "'$untiltime'"
+   else
+      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_time "''"
+   fi
+   set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'"
+
+   if [[ "$do_pause" == "yes" ]]; then
+    set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_action "'pause'"
+   elif [[ "$do_shutdown" == "yes" ]]; then
+    set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_action "'shutdown'"
+   else
+    set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_action "'promote'"
+   fi   
+   touch $PGSQL_BASE/data/recovery.signal
+
+else
+   printheader "Creating $PGSQL_BASE/recovery.conf."
+   [[ ! -z $untiltime ]] && local untiltimeline="recovery_target_time = '$untiltime'" || local untiltimeline=""
+   echo "restore_command = 'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'
 $untiltimeline
 recovery_end_command = 'rm -rf $tmpdir && rm -rf /tmp/pg_replslot'" > $PGSQL_BASE/data/recovery.conf
 
-if [[ "$do_pause" == "yes" ]]; then
-  echo "recovery_target_action=pause" >> $PGSQL_BASE/data/recovery.conf
-elif [[ "$do_shutdown" == "yes" ]]; then
-  echo "recovery_target_action=shutdown" >> $PGSQL_BASE/data/recovery.conf
-else
-  echo "recovery_target_action=promote" >> $PGSQL_BASE/data/recovery.conf
+   if [[ "$do_pause" == "yes" ]]; then
+    echo "recovery_target_action=pause" >> $PGSQL_BASE/data/recovery.conf
+   elif [[ "$do_shutdown" == "yes" ]]; then
+    echo "recovery_target_action=shutdown" >> $PGSQL_BASE/data/recovery.conf
+   else
+    echo "recovery_target_action=promote" >> $PGSQL_BASE/data/recovery.conf
+   fi
+   chown postgres:postgres $PGSQL_BASE/data/recovery.conf
+
 fi
-
-
-chown postgres:postgres $PGSQL_BASE/data/recovery.conf
 
 printheader "Starting database cluster to process recovery."
 sudo systemctl start postgresql-${PGBASENV_ALIAS}
@@ -358,6 +375,21 @@ if [[ ${#@} -gt 0 ]]; then
 fi
 
 
+######## MAIN #######################################
+
+
+# Script main part begins here. Everything in curly braces will be logged in logfile
+{
+
+
+echo "Command line arguments: $@" >> $LOGFILE
+echo "Current user id: $(id)" >> $LOGFILE
+echo "--------------------------------------------------------------------------------------------------------------------------------" >> $LOGFILE
+echo -e >> $LOGFILE
+
+
+
+
 for arg in "$@"
 do
  [[ "$arg" == "list" ]] && list_backup_dir && exit 0
@@ -369,6 +401,7 @@ do
  [[ "$arg" =~ backup_dir=.+ ]] && BACKUP_LOCATION=$( echo $arg | cut -s -d"=" -f2 | xargs) && CMD_LINE_LOCATION=true
  [[ "$arg" =~ -h|help ]] && help && exit 0
 done
+
 
 if [[ ! -z $FROM_DIR && ! -z $UNTIL_TIME ]]; then
   error "Both parameters specified 'from_subdir' and 'until_time'. Only one of them can be specified."
@@ -404,6 +437,8 @@ if [[ ! -z $FROM_DIR ]]; then
   restoreme $BACKUP_LOCATION/$FROM_DIR
   if [[ ! "$BACKUP_LOCATION/$FROM_DIR" == "$CURR_BACKUP_DIR" ]]; then
     echo -e "\n!!! YOU EXECUTED RESTORE FROM NON-CURRENT BACKUP DIRECTORY. YOU MUST TAKE FRESH BACKUP NOW. !!!\n"
+    echo -e "!!! ALL STANDBY DATABASES MUST BE RECREATED !!!\n"
+
   fi
 elif [[ ! -z $UNTIL_TIME ]]; then
   info "Until time specified: $(date -d "$UNTIL_TIME")"
@@ -415,6 +450,8 @@ elif [[ ! -z $UNTIL_TIME ]]; then
   restoreme $UNTIL_DIR "$UNTIL_TIME"
   if [[ ! "$UNTIL_DIR" == "$CURR_BACKUP_DIR" ]]; then
     echo -e "\n!!! YOU EXECUTED RESTORE FROM NON-CURRENT BACKUP DIRECTORY. YOU MUST TAKE FRESH BACKUP NOW. !!!\n"
+    echo -e "!!! ALL STANDBY DATABASES MUST BE RECREATED !!!\n"
+
   fi
 else
   info "Database cluster will be restored from current backup dir = $CURR_BACKUP_DIR"
@@ -430,3 +467,6 @@ fi
 
 exit 0
 
+} 2>&1 | tee -a $LOGFILE
+
+exit ${PIPESTATUS[0]}

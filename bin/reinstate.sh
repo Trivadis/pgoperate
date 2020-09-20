@@ -68,6 +68,13 @@ PG_BIN_HOME=$TVD_PGHOME/bin
 PARAMETERS_FILE=$PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf
 [[ ! -f $PARAMETERS_FILE ]] && echo "Cannot find configuration file $PARAMETERS_FILE." && exit 1
 source $PARAMETERS_FILE
+[[ ! -f $PGOPERATE_BASE/lib/shared.lib ]] && echo "Cannot read $PGOPERATE_BASE/lib/shared.lib file." && exit 1
+source $PGOPERATE_BASE/lib/shared.lib
+
+# Define log file
+prepare_logdir
+declare -r LOGFILE="$PGSQL_BASE/log/tools/$(basename $0)_$(date +"%Y%m%d_%H%M%S").log"
+
 
 [[ -z $PG_PORT ]] && PG_PORT=5432
 
@@ -94,7 +101,11 @@ info() {
 }
 
 
-standby_mode=$(grep standby_mode $PGSQL_BASE/data/recovery.conf | cut -d"=" -f2 | xargs)
+if [[ $TVD_PGVERSION -ge 12 ]]; then
+  [[ -f $PGSQL_BASE/data/standby.signal ]] && standby_mode="on" || standby_mode="off"
+else
+  standby_mode=$(grep standby_mode $PGSQL_BASE/data/recovery.conf | cut -d"=" -f2 | xargs)
+fi
 shopt -s nocasematch
 if [[ $standby_mode == "on" ]]; then
   IS_STANDBY="STANDBY"
@@ -140,6 +151,17 @@ check_master(){
   fi
 }
 
+
+prepare_for_standby(){
+  set_conf_param "$PGSQL_BASE/etc/postgresql.conf" hot_standby "on"
+  grep -q "#replication#" $PGSQL_BASE/etc/pg_hba.conf
+  [[ $? -gt 0 ]] && echo -e "# For replication. Connect from remote hosts. #replication#\nhost    replication     replica      0.0.0.0/0      scram-sha-256" >> $PGSQL_BASE/etc/pg_hba.conf
+  set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_conninfo "'user=replica password=''$REPLICA_USER_PASSWORD'' host=$MASTER_HOST port=$PG_PORT'"
+  set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_slot_name "'${REPLICATION_SLOT_NAME//,*}'"
+  set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_timeline "'latest'"
+  touch $PGSQL_BASE/data/standby.signal
+}
+
 create_recovery_file(){
    echo "
 standby_mode = 'on'
@@ -163,13 +185,27 @@ do_rewind(){
   # fi
    sudo systemctl stop postgresql-${PGBASENV_ALIAS}
    $SU_PREFIX "$PG_BIN_HOME/pg_rewind --target-pgdata=$PGSQL_BASE/data --source-server=\"host=$MASTER_HOST port=$PG_PORT user=$PG_SUPERUSER dbname=postgres connect_timeout=5\" -P"
-   create_recovery_file
+   if [[ $TVD_PGVERSION -ge 12 ]]; then
+     prepare_for_standby
+   else
+     create_recovery_file
+   fi
    sudo systemctl start postgresql-${PGBASENV_ALIAS}
 }
 
 do_duplicate(){
-  $SCRIPTDIR/createslave.sh
+  $SCRIPTDIR/create_slave.sh --force
 }
+
+
+
+# Script main part begins here. Everything in curly braces will be logged in logfile
+{
+
+echo "Command line arguments: $@" >> $LOGFILE
+echo "Current user id: $(id)" >> $LOGFILE
+echo "--------------------------------------------------------------------------------------------------------------------------------" >> $LOGFILE
+echo -e >> $LOGFILE
 
 
 check_master
@@ -217,7 +253,11 @@ if [[ $IS_STANDBY == "STANDBY" ]]; then
 
 elif [[ $IS_STANDBY == "NOTSTANDBY" ]]; then
   printheader "Starting as the standby cluster."
-  create_recovery_file
+  if [[ $TVD_PGVERSION -ge 12 ]]; then
+    prepare_for_standby
+  else
+    create_recovery_file
+  fi
   sudo systemctl start postgresql-${PGBASENV_ALIAS}
   [[ $? -gt 0 ]] && echo "CRITICAL: Manual intervention required." && exit 1
   repstatus=$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d postgres -At -c "select status from pg_stat_wal_receiver where conninfo like '%host=$MASTER_HOST%'")
@@ -267,5 +307,9 @@ else
 fi
 
 exit 0
+
+} 2>&1 | tee -a $LOGFILE
+
+exit ${PIPESTATUS[0]}
 
 

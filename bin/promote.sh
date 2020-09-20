@@ -48,10 +48,15 @@ echo -e "\nCurrent cluster: ${PGBASENV_ALIAS}"
 [[ -z $PGBASENV_ALIAS ]] && error "PG_BIN_HOME is not defined. Set the environment for cluster home."
 PG_BIN_HOME=$TVD_PGHOME/bin
 
-
 PARAMETERS_FILE=$PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf
 [[ ! -f $PARAMETERS_FILE ]] && echo "Cannot find configuration file $PARAMETERS_FILE." && exit 1
 source $PARAMETERS_FILE
+
+
+# Define log file
+prepare_logdir
+declare -r LOGFILE="$PGSQL_BASE/log/tools/$(basename $0)_$(date +"%Y%m%d_%H%M%S").log"
+
 
 # Default port
 [[ -z $PG_PORT ]] && PG_PORT=5432
@@ -98,6 +103,28 @@ while (( "$#" )); do
 done
 
 
+get_master_connectinfo(){
+  local ver=$1
+  if [[ $ver -ge 12 ]]; then
+    local tmp="$(grep primary_conninfo $PGSQL_BASE/etc/postgresql.conf | grep -oE "'.+'")"
+  else
+    local tmp="$(grep primary_conninfo $PGSQL_BASE/data/recovery.conf | grep -oE "'.+'")"
+  fi
+  tmp="${tmp//\'/}"
+  tmp="${tmp//\!/\\!}"
+  echo "$tmp replication=yes connect_timeout=5"
+}
+
+
+
+# Script main part begins here. Everything in curly braces will be logged in logfile
+{
+
+echo "Command line arguments: $@" >> $LOGFILE
+echo "Current user id: $(id)" >> $LOGFILE
+echo "--------------------------------------------------------------------------------------------------------------------------------" >> $LOGFILE
+echo -e >> $LOGFILE
+
 
 
 if [[ $(id -u) -eq 0 ]]; then
@@ -106,8 +133,11 @@ else
   SU_PREFIX="eval"
 fi
 
-
-standby_mode=$(grep standby_mode $PGSQL_BASE/data/recovery.conf | cut -d"=" -f2 | xargs)
+if [[ $TVD_PGVERSION -ge 12 ]]; then
+  [[ -f $PGSQL_BASE/data/standby.signal ]] && standby_mode="on" || standby_mode="off"
+else
+  standby_mode=$(grep standby_mode $PGSQL_BASE/data/recovery.conf | cut -d"=" -f2 | xargs)
+fi
 shopt -s nocasematch
 if [[ $standby_mode == "on" ]]; then
   IS_STANDBY="STANDBY"
@@ -115,15 +145,6 @@ else
   IS_STANDBY="NOTSTANDBY"
 fi
 shopt -u nocasematch
-
-
-
-get_master_connectinfo(){
-  local tmp="$(grep primary_conninfo $PGSQL_BASE/data/recovery.conf | grep -oE "'.+'")"
-  tmp="${tmp//\'/}"
-  tmp="${tmp//\!/\\!}"
-  echo "$tmp replication=yes connect_timeout=5"
-}
 
 
 
@@ -135,7 +156,7 @@ if [[ $IS_STANDBY == "NOTSTANDBY" ]]; then
   exit $?
 
 elif [[ $IS_STANDBY == "STANDBY" ]]; then
-  master_conninfo="$(get_master_connectinfo)"
+  master_conninfo="$(get_master_connectinfo $TVD_PGVERSION)"
   connect=$($PG_BIN_HOME/psql "$master_conninfo" -c "\conninfo" 2>&1)
   if [[ $? -gt 0 ]]; then
     echo "INFO: Master unreachable."
@@ -148,7 +169,7 @@ elif [[ $IS_STANDBY == "STANDBY" ]]; then
   $SU_PREFIX "$PG_BIN_HOME/pg_ctl promote"
   [[ $? -gt 0 ]] && exit 1
   printheader "Preparing as master."
-  $PGOPERATE_BASE/bin/preparemaster.sh
+  $PGOPERATE_BASE/bin/prepare_master.sh
 
 else 
   exit 1
@@ -157,4 +178,6 @@ fi
 
 exit 0
 
+} 2>&1 | tee -a $LOGFILE
 
+exit ${PIPESTATUS[0]}

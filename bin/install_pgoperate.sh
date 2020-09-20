@@ -70,9 +70,9 @@ alias pgoperate=\"\$PGOPERATE_BASE/bin/pgoperate\"
 alias cdbase='eval \"cd \$(test -f \$PGOPERATE_BASE/etc/parameters_\${PGBASENV_ALIAS}.conf && grep \"^PGSQL_BASE\" \$PGOPERATE_BASE/etc/parameters_\${PGBASENV_ALIAS}.conf | cut -d\"=\" -f2 || echo \".\")\"'
 " >> $PGBASENV_BASE/etc/pgbasenv_standard.conf
 
-echo -e "\nInstallation successfully competed."
+echo -e "\nInstallation successfully completed."
 
-echo -e "\nNow execute $TVDBASE/pgoperate/root.sh as root user.\n"
+echo -e "\nNow execute $TVDBASE/pgoperate/bin/root.sh as root user.\n"
 
 
 exit 0

@@ -116,7 +116,11 @@ check_dead_rows() {
 
 # This function will be used in standby checks to get connect info from recovery.conf to connect to master.
 get_master_connectinfo() {
-  local tmp="$(grep primary_conninfo $PGSQL_BASE/data/recovery.conf | grep -oE "'.+'")"
+  if [[ $TVD_PGVERSION -ge 12 ]]; then
+    local tmp="$(grep primary_conninfo $PGSQL_BASE/etc/postgresql.conf | grep -oE "'.+'")"
+  else
+    local tmp="$(grep primary_conninfo $PGSQL_BASE/data/recovery.conf | grep -oE "'.+'")"
+  fi
   tmp="${tmp//\'/}"
   tmp="${tmp//\!/\\!}"
   echo "$tmp dbname=postgres connect_timeout=10"

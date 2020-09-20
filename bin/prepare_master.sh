@@ -29,7 +29,7 @@ help() {
 echo "
  Script to create replica user and prepare PostgreSQL for master role.
 
- WARNING! Cluster will be restarted.
+ WARNING! Cluster will be restarted if track_commit_timestamp is not \"on\".
 
  Script accepts no arguments.
 
@@ -50,6 +50,10 @@ PARAMETERS_FILE=$PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf
 [[ ! -f $PGOPERATE_BASE/lib/shared.lib ]] && echo "Cannot read $PGOPERATE_BASE/lib/shared.lib file." && exit 1
 source $PARAMETERS_FILE
 source $PGOPERATE_BASE/lib/shared.lib
+
+# Define log file
+prepare_logdir
+declare -r LOGFILE="$PGSQL_BASE/log/tools/$(basename $0)_$(date +"%Y%m%d_%H%M%S").log"
 
 
 # Default port
@@ -136,6 +140,13 @@ done
 
 
 
+# Script main part begins here. Everything in curly braces will be logged in logfile
+{
+
+echo "Command line arguments: $@" >> $LOGFILE
+echo "Current user id: $(id)" >> $LOGFILE
+echo "--------------------------------------------------------------------------------------------------------------------------------" >> $LOGFILE
+echo -e >> $LOGFILE
 
 
 
@@ -155,11 +166,15 @@ update_db_params
 printheader "Create replication slot(s) $REPLICATION_SLOT_NAME"
 for rslot in $(echo $REPLICATION_SLOT_NAME | sed "s/,/ /g")
 do
-  $PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d postgres -c "SELECT * FROM pg_create_physical_replication_slot('$rslot');" -t
+  output="$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d postgres -c "SELECT * FROM pg_create_physical_replication_slot('$rslot');" -t 2>&1)"
+  echo "$output" | grep -q "already exists"
+  [[ $? -gt 0 ]] && echo "$output"
 done
 
 printheader "Create user replica for replication"
-$PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d postgres -c "CREATE USER replica WITH REPLICATION PASSWORD '$REPLICA_USER_PASSWORD';" -t
+output="$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d postgres -c "CREATE USER replica WITH REPLICATION PASSWORD '$REPLICA_USER_PASSWORD';" -t 2>&1)"
+echo "$output" | grep -q "already exists"
+[[ $? -gt 0 ]] && echo "$output"
 
 printheader "Updating pg_hba.conf file"
 update_pg_hba
@@ -177,4 +192,8 @@ fi
 
 
 exit 0
+
+} 2>&1 | tee -a $LOGFILE
+
+exit ${PIPESTATUS[0]}
 

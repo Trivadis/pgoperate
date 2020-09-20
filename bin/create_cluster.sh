@@ -133,6 +133,20 @@ source $PARAMETERS_FILE
 source $PGOPERATE_BASE/lib/shared.lib
 
 
+# Define log file
+prepare_logdir
+declare -r LOGFILE="$PGSQL_BASE/log/tools/$(basename $0)_$(date +"%Y%m%d_%H%M%S").log"
+
+# Everything in curly braces will be logged in logfile
+{
+
+echo "Command line arguments: $@" >> $LOGFILE
+echo "Current user id: $(id)" >> $LOGFILE
+echo "--------------------------------------------------------------------------------------------------------------------------------" >> $LOGFILE
+echo -e >> $LOGFILE
+
+
+
 [[ -z $PG_PORT ]] && echo "ERROR: Please set PG_PORT parameter in $PARAMETERS_FILE file." && exit 1
 
 
@@ -204,3 +218,7 @@ echo "           3. Execute in-cluster actions."
 echo " "
 
 exit 0
+
+} 2>&1 | tee -a $LOGFILE
+
+exit ${PIPESTATUS[0]}

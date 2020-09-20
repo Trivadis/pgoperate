@@ -25,6 +25,10 @@ help() {
 
  Script to create standby PostgreSQL cluster.
 
+ Available options:
+
+ --force    \$PGDATA will be emptied by the script without warning.
+
  Script uses PGSQL_BASE and other variables from $PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf file.
 
 "
@@ -43,6 +47,13 @@ PG_BIN_HOME=$TVD_PGHOME/bin
 PARAMETERS_FILE=$PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf
 [[ ! -f $PARAMETERS_FILE ]] && echo "Cannot find configuration file $PARAMETERS_FILE." && exit 1
 source $PARAMETERS_FILE
+[[ ! -f $PGOPERATE_BASE/lib/shared.lib ]] && echo "Cannot read $PGOPERATE_BASE/lib/shared.lib file." && exit 1
+source $PGOPERATE_BASE/lib/shared.lib
+
+
+# Define log file
+prepare_logdir
+declare -r LOGFILE="$PGSQL_BASE/log/tools/$(basename $0)_$(date +"%Y%m%d_%H%M%S").log"
 
 
 # Default port
@@ -50,8 +61,10 @@ source $PARAMETERS_FILE
 
 declare -r DEFAULT_REPLICATION_SLOT_NAME="slave001"
 
+FORCE=0
 for i in $@; do
   [[ "$i" =~ -h|help ]] && help && exit 0
+  [[ "$i" =~ -f|--force ]] && FORCE=1
 done
 
 
@@ -78,64 +91,6 @@ info() {
 }
 
 
-modifyFile() {
-  local v_file=$1
-  local v_op=$2
-  local value="$3"
-  local replace="$4"
-  replace="${replace//\"/\\x22}"
-  replace="${replace//$'\t'/\\t}"
-  value="${value//\"/\\x22}"
-  value="${value//$'\t'/\\t}"
-  local v_bkp_file=$v_file"."$(date +"%y%m%d%H%M%S")
-  if [[ -z $v_file || -z $v_op ]]; then
-    error "First two arguments are mandatory!"
-    return 1
-  fi
-  if [[ $v_op == "bkp" ]]; then
-     cp $v_file $v_bkp_file
-  fi
-  if [[ $v_op == "rep" ]]; then
-      if [[ -z $value || -z $replace ]]; then
-         error "Last two values required $3 and $4, value and its replacement!"
-         return 1
-      fi
-      sed -i -e "s+$replace+$value+g" $v_file
-      [[ $? -ne 0 ]] && error "Write operation failed!" && return 1
-  fi
-  if [[ $v_op == "add" ]]; then
-      if [[ -z $value ]]; then
-         error "Third argument $3 required!"
-         return 1
-      fi
-      echo -e $value >> $v_file
-      [[ $? -ne 0 ]] && error "Write operation failed!" && return 1
-  fi
-  if [[ $v_op == "rem" ]]; then
-      if [[ -z $value ]]; then
-         error "Third argument $3 required!"
-         return 1
-      fi
-      sed -i "s+$value++g" $v_file
-      [[ $? -ne 0 ]] && error "Write operation failed!" && return 1
-  fi
-  return 0
-}
-
-set_conf_param() {
-local config="$1"
-local param="$2"
-local value="$3"
-local repval="$(grep -Ei "(^|#| )$param *=" $config)"
-
-if [[ ${#repval} -gt 0 ]]; then
-  modifyFile $config rep "$param = $value\t\t# Modified by createslave.sh" "${repval//[$'\n']}"
-else
-  modifyFile $config add "$param = $value\t\t# Added by createslave.sh"
-fi
-}
-
-
 update_db_params() {
 modifyFile "$PGSQL_BASE/etc/postgresql.conf" bkp
 set_conf_param "$PGSQL_BASE/etc/postgresql.conf" wal_level "replica"
@@ -159,6 +114,15 @@ else
 fi
 
 
+# Script main part begins here. Everything in curly braces will be logged in logfile
+{
+
+echo "Command line arguments: $@" >> $LOGFILE
+echo "Current user id: $(id)" >> $LOGFILE
+echo "--------------------------------------------------------------------------------------------------------------------------------" >> $LOGFILE
+echo -e >> $LOGFILE
+
+
 
 if [[ -z $MASTER_HOST ]]; then
   error "MASTER_HOST parameter is not defined. Define it in parameters.conf file and re-execute."
@@ -170,14 +134,22 @@ if [[ -z $REPLICATION_SLOT_NAME ]]; then
     REPLICATION_SLOT_NAME=$DEFAULT_REPLICATION_SLOT_NAME
 fi
 
+
+if [[ $FORCE -eq 0 ]]; then
+  data_dir=$(ls $PGSQL_BASE/data/)
+  [[ ! -z $data_dir ]] && echo "ERROR: \$PGDATA directory $PGDATA is not empty. Remove all files from it or use --force option." && exit 1
+fi
+
 printheader "Setting parameters in postgresql.conf"
 update_db_params
 
-printheader "Stopping postgresql service"
+printheader "Stopping postgresql service with systemctl"
 sudo systemctl stop postgresql-${PGBASENV_ALIAS}
 
-printheader "Clearing data directory $PGSQL_BASE/data"
-rm -rf $PGSQL_BASE/data/*
+if [[ $FORCE -eq 1 ]]; then
+  printheader "Force option specified. Clearing data directory $PGSQL_BASE/data"
+  rm -rf $PGSQL_BASE/data/*
+fi
 
 printheader "Copying data directory from $MASTER_HOST to the $PGSQL_BASE/data"
 $SU_PREFIX "export PGPASSWORD=\"$REPLICA_USER_PASSWORD\" && $PG_BIN_HOME/pg_basebackup --wal-method=stream -D $PGSQL_BASE/data -U replica -h $MASTER_HOST -p $PG_PORT -R"
@@ -185,9 +157,19 @@ if [[ ! $? -eq 0 ]]; then
    error "Duplicate from master site failed. Check output and PostgreSQL log files."
    exit 1
 fi
-echo "primary_slot_name = '${REPLICATION_SLOT_NAME//,*}'" >> $PGSQL_BASE/data/recovery.conf
-echo "recovery_target_timeline = 'latest'" >> $PGSQL_BASE/data/recovery.conf
 
+if [[ $TVD_PGVERSION -ge 12 ]]; then
+  conninfo=$(grep primary_conninfo $PGSQL_BASE/data/postgresql.auto.conf | grep -oE "'.+'" | tail -1)
+  [[ ! -z $BACKUP_LOCATION ]] && set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'"
+  set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_conninfo "$conninfo"
+  set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_slot_name "'${REPLICATION_SLOT_NAME//,*}'"
+  set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_timeline "'latest'"
+  touch $PGSQL_BASE/data/standby.signal
+else
+  [[ ! -z $BACKUP_LOCATION ]] && echo "restore_command = 'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'" > $PGSQL_BASE/data/recovery.conf
+  echo "primary_slot_name = '${REPLICATION_SLOT_NAME//,*}'" >> $PGSQL_BASE/data/recovery.conf
+  echo "recovery_target_timeline = 'latest'" >> $PGSQL_BASE/data/recovery.conf
+fi
 
 printheader "Updating pg_hba.conf file"
 update_pg_hba
@@ -207,6 +189,9 @@ else
    exit 1
 fi
 
-
 exit 0
+
+} 2>&1 | tee -a $LOGFILE
+
+exit ${PIPESTATUS[0]}
 
