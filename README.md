@@ -169,7 +169,7 @@ In case of archive log mode, WAL files will be archived to **backup** sub-folder
 
 
 
-## About parameters_<alias>.conf
+## About parameters_\<alias\>.conf
 ---
 
 It is a single parameter file which includes variables used by all management scripts.
