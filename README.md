@@ -13,6 +13,7 @@ First PgBaseEnv must be installed.
 | Script                  | Description                                                            |
 | ----------------------- | ---------------------------------------------------------------------- |
 | **create_cluster.sh**   | Creates new PostgreSQL cluster.                                        |
+| **remove_cluster.sh**   | Remove PostgreSQL cluster.                                             |
 | **prepare_master.sh**   | Prepares PostgreSQL cluster to master role.                            |
 | **create_slave.sh**     | Creates standby cluster.                                               |
 | **promote.sh**          | Promotes standby to master.                                            |
@@ -58,6 +59,7 @@ $PGOPERATE_BASE ┐
                 ├─── bin ┐
                 │        ├── pgoperate
                 │        ├── create_cluster.sh
+                │        ├── remove_cluster.sh
                 │        ├── prepare_master.sh
                 │        ├── create_slave.sh
                 │        ├── promote.sh
@@ -74,6 +76,8 @@ $PGOPERATE_BASE ┐
                 │        ├── parameters_mycls.conf.tpl
                 │        ├── parameters_<alias>.conf        
                 │        └── ...
+                │
+                ├─── log
                 │
                 ├─── lib ┐
                 │        ├── check.lib
@@ -242,6 +246,25 @@ It will create bundle by default in `$PGOPERATE_BASE/bundle` folder.
 If you want to create bundle in some other location, then provide target folder as first argument.
 
 
+## install_pgoperate.sh
+---
+
+Script to install pgOperate on the host.
+
+Copy files from **bundle** folder to some location and execute **install_pgoperate.sh** to install pgOperate.
+
+
+
+## root.sh
+---
+
+Script to execute root actions. It can be executed only one time after pgOperate installation.
+
+It will add `01_postgres` file into `/etc/sudoers.d` to allow `postgres` user to `start/stop/status/reload` the `postgresql-<alias>` service with sudo privileges.
+
+
+
+
 
 ## pgoperate
 ---
@@ -277,6 +300,8 @@ Available options:
 
 This script will create a new PostgreSQL cluster.
 
+Logs of the **create_cluster.sh** will be saved into $PGOPERATE_BASE/log folder.
+
 Arguments:
    `-a|--alias <alias_name>` -  Alias name of the cluster to be created.
 
@@ -301,7 +326,7 @@ Script must be executed as postgres user.
 
 At the end of installation script will offer to execute `root.sh` as root user.
 
-Switch to root and execute `root.sh`. It will create `postgresql-<alias>` unit file in /etc/systemd/system for systemctl daemon and add `01_postgres` file into `/etc/sudoers.d` to allow `postgres` user to `start/stop/status/reload` the `postgresql-<alias>` service with sudo privileges. Cluster will be started with systemctl and in-cluster actions will be executed.
+Switch to root and execute `root.sh`. It will create `postgresql-<alias>` unit file in /etc/systemd/system for systemctl daemon. Cluster will be started with systemctl and in-cluster actions will be executed.
 
 Local connection without password will be possible only by postgres user and root.
 
@@ -318,6 +343,47 @@ vi parameters_cls1.conf
 # Then execute as postgres
 pgoperate --create-cluster --alias cls1
 ```
+
+
+
+## remove_cluster.sh
+---
+
+This script will remove a PostgreSQL cluster.
+
+Logs of the **remove_cluster.sh** will be saved into $PGOPERATE_BASE/log folder.
+
+Arguments:
+              `-a|--alias <alias_name>` -  Alias name of the cluster to be removed.
+
+Alias name of the cluster to be deleted must be provided.
+
+Parameters file for this alias must exist in `$PGOPERATE_BASE/etc` before executing the script.
+
+The `$PGSQL_BASE` directory will be removed.
+
+Cluster will be unregistered from PgBaseEnv. 
+
+Next steps will be performed:
+
+* Cluster will be stopped.
+* `$PGSQL_BASE` will be removed.
+* Script will be generated to remove service file for this cluster.
+
+Script must be executed as postgres user.
+
+At the end of execution, script will offer to run `/tmp/pg_rm_service.sh` as root user.
+
+Switch to root and execute it. It will remove `postgresql-<alias>` unit file from /etc/systemd/system.
+
+Example for cluster with alias cls1:
+
+```
+# Execute as postgres
+pgoperate --remove-cluster --alias cls1
+Cluster pg12 will be deleted. Cluster base directory including $PGDATA will be removed. Continue? [y/n]
+```
+
 
 
 

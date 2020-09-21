@@ -87,7 +87,7 @@ adding_entry_in_pgtab() {
 
 ### MAIN ######################################################################
 
-
+ARGS="$@"
 
 PARAMS=""
 while (( "$#" )); do
@@ -134,13 +134,13 @@ source $PGOPERATE_BASE/lib/shared.lib
 
 
 # Define log file
-prepare_logdir
-declare -r LOGFILE="$PGSQL_BASE/log/tools/$(basename $0)_$(date +"%Y%m%d_%H%M%S").log"
+mkdir -p $PGOPERATE_BASE/log
+declare -r LOGFILE="$PGOPERATE_BASE/log/$(basename $0)_$(date +"%Y%m%d_%H%M%S").log"
 
 # Everything in curly braces will be logged in logfile
 {
 
-echo "Command line arguments: $@" >> $LOGFILE
+echo "Command line arguments: ${ARGS}" >> $LOGFILE
 echo "Current user id: $(id)" >> $LOGFILE
 echo "--------------------------------------------------------------------------------------------------------------------------------" >> $LOGFILE
 echo -e >> $LOGFILE

@@ -26,6 +26,7 @@ function help() {
 Available options:
   
   --create-cluster         Create new PostgreSQL Cluster
+  --remove-cluster         Removes PostgreSQL Cluster
   --backup                 Backup PostgreSQL CLuster
   --restore                Restore PostgreSQL Cluster
   --check                  Execute monitoring checks
@@ -56,6 +57,10 @@ case $1 in
 
   --create-cluster) shift
             $PGOPERATE_BASE/bin/create_cluster.sh "$@"
+            ;;  
+
+  --remove-cluster) shift
+            $PGOPERATE_BASE/bin/remove_cluster.sh "$@"
             ;;  
 
   --reinstate) shift
