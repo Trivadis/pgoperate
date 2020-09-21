@@ -57,7 +57,8 @@ declare -r LOGFILE="$PGSQL_BASE/log/tools/$(basename $0)_$(date +"%Y%m%d_%H%M%S"
 
 
 # Default port
-[[ -z $PG_PORT ]] && PG_PORT=5432
+[[ -z $PGPORT ]] && echo "ERROR: PGPORT is undefined. Set environment for the cluster before execution." && exit 1
+PG_PORT=$PGPORT
 
 
 GRE='\033[0;32m'

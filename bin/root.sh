@@ -28,6 +28,7 @@ echo "
 $PG_SUPERUSER ALL= NOPASSWD: /bin/systemctl start postgresql*
 $PG_SUPERUSER ALL= NOPASSWD: /bin/systemctl stop postgresql*
 $PG_SUPERUSER ALL= NOPASSWD: /bin/systemctl status postgresql*
+$PG_SUPERUSER ALL= NOPASSWD: /bin/systemctl reload postgresql*
 " > /etc/sudoers.d/01_postgres
 
 echo "Now user $PG_SUPERUSER can use sudo to start/stop postgresql using systemctl."

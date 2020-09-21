@@ -28,7 +28,7 @@ PG_ENABLE_CHECKSUM=yes
 # The superuser account for the cluster
 PG_SUPERUSER=postgres
 
-# The password of the superuser account.
+# The password for the superuser account.
 PG_SUPERUSER_PWD=
 
 # Percentage of the host memory to use for cluster shared buffers
@@ -50,7 +50,7 @@ SERVER_CERT=
 SERVER_KEY=
 
 # This parameter defines the new line separated list of the configuration parameters which must be set.
-# If shared_buffers parameter will be set here, it will override PCTMEM parameter value.
+# If `shared_buffers` will be set here, then it will be overridden by `PCTMEM` if defined. If `PCTMEM` is null then absolute value will be set.
 PG_DEF_PARAMS="
 max_connections=1000
 huge_pages=off
@@ -87,6 +87,9 @@ BACKUP_RETENTION_DAYS=7
 
 # Master host name or IP
 MASTER_HOST=
+
+# Master port
+MASTER_PORT=
 
 # Replication slots to be created. Can be comma separated list.
 REPLICATION_SLOT_NAME="slave001, slave002, slave003"

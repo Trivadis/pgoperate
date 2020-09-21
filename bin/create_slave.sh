@@ -57,7 +57,11 @@ declare -r LOGFILE="$PGSQL_BASE/log/tools/$(basename $0)_$(date +"%Y%m%d_%H%M%S"
 
 
 # Default port
-[[ -z $PG_PORT ]] && PG_PORT=5432
+[[ -z $PGPORT ]] && echo "ERROR: PGPORT is undefined. Set environment for the cluster before execution." && exit 1
+PG_PORT=$PGPORT
+[[ -z $MASTER_PORT ]] && MASTER_PORT=$PGPORT
+
+
 
 declare -r DEFAULT_REPLICATION_SLOT_NAME="slave001"
 
@@ -152,7 +156,7 @@ if [[ $FORCE -eq 1 ]]; then
 fi
 
 printheader "Copying data directory from $MASTER_HOST to the $PGSQL_BASE/data"
-$SU_PREFIX "export PGPASSWORD=\"$REPLICA_USER_PASSWORD\" && $PG_BIN_HOME/pg_basebackup --wal-method=stream -D $PGSQL_BASE/data -U replica -h $MASTER_HOST -p $PG_PORT -R"
+$SU_PREFIX "export PGPASSWORD=\"$REPLICA_USER_PASSWORD\" && $PG_BIN_HOME/pg_basebackup --wal-method=stream -D $PGSQL_BASE/data -U replica -h $MASTER_HOST -p $MASTER_PORT -R"
 if [[ ! $? -eq 0 ]]; then
    error "Duplicate from master site failed. Check output and PostgreSQL log files."
    exit 1
