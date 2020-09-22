@@ -103,6 +103,12 @@ info() {
 
 list_backup_dir() {
 echo -e "\nBackup location: $BACKUP_LOCATION"
+if [[ ! -d $BACKUP_LOCATION ]]; then
+  echo
+  echo "Backup directory not created yet. It will be created with first backup command."
+  echo
+  return 0
+fi
 local backups=$(ls $BACKUP_LOCATION/ | grep -E "^[0-9]+-[0-9]+$")
 local d md cnt mdir mid midir
 cnt=0
@@ -467,7 +473,7 @@ if [[ "$CMD_LINE_LOCATION" == true ]]; then
    info "You restored from non-default backup location. Consider to take fresh backup if it is production system."
 fi
 
-
+echo -e "\nLogfile of this execution: $LOGFILE\n"
 exit 0
 
 } 2>&1 | tee -a $LOGFILE

@@ -119,13 +119,14 @@ source $HOME/.pgbasenv_profile
 PARAMETERS_FILE=$PGOPERATE_BASE/etc/parameters_${PG_CLUSTER_ALIAS}.conf
 [[ ! -f $PARAMETERS_FILE ]] && echo "Cannot find configuration file $PARAMETERS_FILE." && exit 1
 source $PARAMETERS_FILE
+_SAVE_=$PGSQL_BASE
 
 [[ ! -f $PGOPERATE_BASE/lib/shared.lib ]] && echo "Cannot read $PGOPERATE_BASE/lib/shared.lib file." && exit 1
 source $PGOPERATE_BASE/lib/shared.lib
 
 # Set environment of the cluster to be deleted
 pgsetenv $PG_CLUSTER_ALIAS
-
+PGSQL_BASE=$_SAVE_
 
 [[ -z $PGDATA ]] && echo "ERROR: PGDATA is not defined, check if the cluster alias specified correctly." && exit 1
 
@@ -150,9 +151,6 @@ echo "--------------------------------------------------------------------------
 echo -e >> $LOGFILE
 
 
-
-
-
 PG_SERVICE_FILE="postgresql-${PG_CLUSTER_ALIAS}.service"
 PG_BIN_HOME=$TVD_PGHOME/bin
 
@@ -160,13 +158,13 @@ PG_BIN_HOME=$TVD_PGHOME/bin
 printheader "Stopping cluster."
 sudo systemctl stop $PG_SERVICE_FILE
 
-printheader "Removing entry from pgclustertab file."
-removing_entry_from_pgtab
-
 printheader "Removing $PGSQL_BASE directory."
 if [[ -d $PGSQL_BASE ]]; then
    rm -Rf $PGSQL_BASE
 fi
+
+printheader "Removing entry from pgclustertab file."
+removing_entry_from_pgtab
 
 
 if [[ $PGPORT -gt 1 ]]; then
@@ -181,6 +179,7 @@ echo -e
 echo "INFO: Please execute /tmp/pg_rm_service.sh as root user to remove service file for this cluster."
 echo " "
 
+echo -e "\nLogfile of this execution: $LOGFILE\n"
 exit 0
 
 } 2>&1 | tee -a $LOGFILE

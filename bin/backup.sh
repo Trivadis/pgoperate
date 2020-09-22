@@ -166,6 +166,12 @@ chown postgres:postgres $bdir/wal
 
 list_backup_dir() {
 echo -e "\nBackup location: $BACKUP_LOCATION"
+if [[ ! -d $BACKUP_LOCATION ]]; then
+  echo
+  echo "Backup directory not created yet. It will be created with first backup command."
+  echo
+  return 0
+fi
 local backups=$(ls $BACKUP_LOCATION/ | grep -E "^[0-9]+-[0-9]+$")
 local d md cnt mdir mid midir
 cnt=0
@@ -443,8 +449,10 @@ if [[ ! -z $ONETIME_BACKUP_LOC ]]; then
   info "One time backup location $BACKUP_LOCATION will be used. No archive location switch will be performed."
 fi
 
-[[ "$LIST" == true ]] && list_backup_dir && exit 0
-
+if [[ "$LIST" == true ]]; then
+    list_backup_dir
+    exit 0
+fi
 
 
 
@@ -561,7 +569,7 @@ fi
 echo -e
 echo "Backup finished."
 
-
+echo -e "\nLogfile of this execution: $LOGFILE\n"
 exit 0
 
 } 2>&1 | tee -a $LOGFILE

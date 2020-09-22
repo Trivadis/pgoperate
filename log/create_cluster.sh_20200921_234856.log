@@ -1,0 +1,158 @@
+Command line arguments: --alias pg12
+Current user id: uid=26(postgres) gid=26(postgres) groups=26(postgres) context=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023
+--------------------------------------------------------------------------------------------------------------------------------
+
+[0;32m
+----------------------------------------------------------------------------
+[   Creating directories in 
+----------------------------------------------------------------------------
+[0m
+BASE=
+chown: missing operand after ‘postgres:postgres’
+Try 'chown --help' for more information.
+mkdir: cannot create directory ‘/data’: Permission denied
+chown: cannot access ‘/data’: No such file or directory
+chmod: cannot access ‘/data’: No such file or directory
+mkdir: cannot create directory ‘/arch’: Permission denied
+chown: cannot access ‘/arch’: No such file or directory
+chmod: cannot access ‘/arch’: No such file or directory
+mkdir: cannot create directory ‘/scripts’: Permission denied
+chown: cannot access ‘/scripts’: No such file or directory
+chmod: cannot access ‘/scripts’: No such file or directory
+mkdir: cannot create directory ‘/log’: Permission denied
+chown: cannot access ‘/log’: No such file or directory
+chmod: cannot access ‘/log’: No such file or directory
+chown: changing ownership of ‘/etc’: Operation not permitted
+chmod: changing permissions of ‘/etc’: Operation not permitted
+mkdir: cannot create directory ‘/cert’: Permission denied
+chown: cannot access ‘/cert’: No such file or directory
+chmod: cannot access ‘/cert’: No such file or directory
+[0;32m
+----------------------------------------------------------------------------
+[   Initialize PostgreSQL CLuster
+----------------------------------------------------------------------------
+[0m
+The files belonging to this database system will be owned by user "postgres".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default text search configuration will be set to "english".
+
+Data page checksums are enabled.
+
+creating directory /data ... initdb: error: could not create directory "/data": Permission denied
+[0;32m
+----------------------------------------------------------------------------
+[   Moving config files to /etc
+----------------------------------------------------------------------------
+[0m
+mv: cannot stat ‘/data/postgresql.conf’: No such file or directory
+mv: cannot stat ‘/data/pg_hba.conf’: No such file or directory
+mv: cannot stat ‘/data/pg_ident.conf’: No such file or directory
+[0;32m
+----------------------------------------------------------------------------
+[   Copy certificates
+----------------------------------------------------------------------------
+[0m
+[0;32m
+----------------------------------------------------------------------------
+[   Updating pg_hba.conf
+----------------------------------------------------------------------------
+[0m
+sed: can't read /etc/pg_hba.conf: No such file or directory
+sed: can't read /etc/pg_hba.conf: No such file or directory
+sed: can't read /etc/pg_hba.conf: No such file or directory
+sed: can't read /etc/pg_hba.conf: No such file or directory
+sed: can't read /etc/pg_hba.conf: No such file or directory
+sed: can't read /etc/pg_hba.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 182: /etc/pg_hba.conf: Permission denied
+grep: /etc/pg_hba.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 184: /etc/pg_hba.conf: Permission denied
+grep: /etc/pg_hba.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 186: /etc/pg_hba.conf: Permission denied
+[0;32m
+----------------------------------------------------------------------------
+[   Updating parameters in postgresql.conf
+----------------------------------------------------------------------------
+[0m
+cp: cannot stat ‘/etc/postgresql.conf’: No such file or directory
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+grep: /etc/postgresql.conf: No such file or directory
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 42: /etc/postgresql.conf: Permission denied
+/var/lib/pgsql/tvdtoolbox/pgoperate/lib/shared.lib: line 43: error: command not found
+[0;32m
+----------------------------------------------------------------------------
+[   Manually testing new cluster
+----------------------------------------------------------------------------
+[0m
+pg_ctl: directory "/data" does not exist
+pg_ctl: directory "/data" does not exist
+/var/lib/pgsql/tvdtoolbox/pgoperate/bin/create_cluster.sh: line 196: error: command not found

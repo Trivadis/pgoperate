@@ -193,6 +193,7 @@ else
    exit 1
 fi
 
+echo -e "\nLogfile of this execution: $LOGFILE\n"
 exit 0
 
 } 2>&1 | tee -a $LOGFILE

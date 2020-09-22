@@ -129,9 +129,10 @@ PARAMETERS_FILE=$PGOPERATE_BASE/etc/parameters_${PG_CLUSTER_ALIAS}.conf
 
 [[ ! -f $PARAMETERS_FILE ]] && echo "Cannot find configuration file $PARAMETERS_FILE." && exit 1
 [[ ! -f $PGOPERATE_BASE/lib/shared.lib ]] && echo "Cannot read $PGOPERATE_BASE/lib/shared.lib file." && exit 1
-source $PARAMETERS_FILE
 source $PGOPERATE_BASE/lib/shared.lib
+source $PARAMETERS_FILE
 
+_SAVE_=$PGSQL_BASE
 
 # Define log file
 mkdir -p $PGOPERATE_BASE/log
@@ -144,7 +145,6 @@ echo "Command line arguments: ${ARGS}" >> $LOGFILE
 echo "Current user id: $(id)" >> $LOGFILE
 echo "--------------------------------------------------------------------------------------------------------------------------------" >> $LOGFILE
 echo -e >> $LOGFILE
-
 
 
 [[ -z $PG_PORT ]] && echo "ERROR: Please set PG_PORT parameter in $PARAMETERS_FILE file." && exit 1
@@ -161,12 +161,12 @@ if [[ -z $TVD_PGHOME_ALIAS ]]; then
 fi
 
 pgsetenv $TVD_PGHOME_ALIAS
-
-
+export PGSQL_BASE=$_SAVE_
 
 PG_SERVICE_FILE="postgresql-${PG_CLUSTER_ALIAS}.service"
 PG_BIN_HOME=$TVD_PGHOME/bin
 
+[[ -z $PGSQL_BASE ]] && echo "ERROR: PGSQL_BASE cannot be empty." && exit 1
 
 printheader "Creating directories in $PGSQL_BASE"
 if [[ -d $PGSQL_BASE ]]; then
@@ -217,6 +217,8 @@ echo "           2. Start the service $PG_SERVICE_FILE"
 echo "           3. Execute in-cluster actions."
 echo " "
 
+
+echo -e "\nLogfile of this execution: $LOGFILE\n"
 exit 0
 
 } 2>&1 | tee -a $LOGFILE

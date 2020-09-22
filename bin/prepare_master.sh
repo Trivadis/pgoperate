@@ -191,7 +191,7 @@ else
   sudo systemctl start postgresql-${PGBASENV_ALIAS}
 fi
 
-
+echo -e "\nLogfile of this execution: $LOGFILE\n"
 exit 0
 
 } 2>&1 | tee -a $LOGFILE
