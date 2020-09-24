@@ -1,11 +1,18 @@
-# pgOperate tool-set to operate PostgreSQL clusters
+# pgOperate -  Tool Set to operate PostgreSQL Clusters
 ---
+
+pgOperate is a tool that simplifies the operation of Community PostgreSQL cluster (versions 9.6+).
+
 
 ## Prerequisites
 
 pgOperate requires pgBaseEnv.
 
 First pgBasEnv must be installed.
+
+
+## License
+The pgOperate is released under the APACHE LICENSE, VERSION 2.0, that allows a collaborative open source software development.
 
 
 ## PostgreSQL cluster management scripts developed to automate regular tasks.
@@ -39,6 +46,7 @@ First pgBasEnv must be installed.
 | **install_pgoperate.sh** | pgOperate installation script.                                         |
 | **root.sh**              | Script to execute root actions after installation.                     |
 | **bundle.sh**            | Generates installation bundle for pgOperate.                           |
+
 
 
 
