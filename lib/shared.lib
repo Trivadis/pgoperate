@@ -69,6 +69,7 @@ fi
 
 
 create_dirs() {
+mkdir -p $PGSQL_BASE
 chown postgres:postgres $PGSQL_BASE
 mkdir -p $PGSQL_BASE/data
 chown postgres:postgres $PGSQL_BASE/data

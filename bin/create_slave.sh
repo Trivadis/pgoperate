@@ -27,7 +27,9 @@ help() {
 
  Available options:
 
- --force    \$PGDATA will be emptied by the script without warning.
+ -m --master   Optional master host name or IP. If specified, then parameters file will be updated with this value. 
+                 If not specified then, MASTER_HOST from parameters file will be used.
+ -f --force    \$PGDATA will be emptied by the script without warning.
 
  Script uses PGSQL_BASE and other variables from $PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf file.
 
@@ -61,15 +63,38 @@ declare -r LOGFILE="$PGSQL_BASE/log/tools/$(basename $0)_$(date +"%Y%m%d_%H%M%S"
 PG_PORT=$PGPORT
 [[ -z $MASTER_PORT ]] && MASTER_PORT=$PGPORT
 
-
-
 declare -r DEFAULT_REPLICATION_SLOT_NAME="slave001"
+
+
+
+set_param() {
+local param="$1"
+local value="$2"
+local repval="$(grep -Ei "(^|#| )$param *=" $PARAMETERS_FILE)"
+
+if [[ ${#repval} -gt 0 ]]; then
+  modifyFile $PARAMETERS_FILE rep "$param=$value" "${repval//[$'\n']}"
+else
+  modifyFile $PARAMETERS_FILE add "$param=$value"
+fi
+}
+
+
 
 FORCE=0
 for i in $@; do
   [[ "$i" =~ -h|help ]] && help && exit 0
-  [[ "$i" =~ -f|--force ]] && FORCE=1
+  [[ "$i" =~ -f|--force ]] && FORCE=1; shift
+  [[ "$i" =~ -m|--master ]] && NEW_MASTER_HOST=$1
 done
+
+# Set the new hostname
+if [[ ! -z $NEW_MASTER_HOST ]]; then
+  if [[ "$NEW_MASTER_HOST" != "$MASTER_HOST" ]]; then
+     MASTER_HOST=$NEW_MASTER_HOST
+     set_param "MASTER_HOST" "$NEW_MASTER_HOST"
+  fi
+fi
 
 
 
@@ -132,6 +157,7 @@ if [[ -z $MASTER_HOST ]]; then
   error "MASTER_HOST parameter is not defined. Define it in parameters.conf file and re-execute."
   exit 1
 fi
+
 
 if [[ -z $REPLICATION_SLOT_NAME ]]; then
     info "REPLICATION_SLOT_NAME parameter was not specified in parameters.conf. Default name $DEFAULT_REPLICATION_SLOT_NAME will be used."

@@ -44,14 +44,15 @@ echo "
 
   Available options:
 
-    -m <hostname>   Master host. If not specified, master host from $PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf will be used.
+    -m <hostname>   Master host name or IP address. Parameters files will be updated with this new value. 
+                    If not specified, master host from $PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf will be used.
     -f              Force to recreate standby from master if everything else fails.
     -r              Execute only pg_rewind to synchronize primary and standby.
     -d              Recreate standby from master.
 
   Example:
-   $0 -f
-   $0 -f -h myhost1
+   $(basename $0) -f
+   $(basename $0) -f -m myhost1
 "
 }
 
@@ -197,7 +198,7 @@ do_rewind(){
 }
 
 do_duplicate(){
-  $SCRIPTDIR/create_slave.sh --force
+  $SCRIPTDIR/create_slave.sh --force --master $MASTER_HOST
 }
 
 

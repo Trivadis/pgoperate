@@ -268,7 +268,8 @@ if [[ ! -d $RECENT_WAL_LOCATION && -d $PGSQL_BASE/data/pg_wal ]]; then
 printheader "Copying current WALs to $tmpdir."
 mkdir -p $tmpdir
 chown postgres:postgres $tmpdir
-cp -p $PGSQL_BASE/data/pg_wal/* $tmpdir/
+#cp -p $PGSQL_BASE/data/pg_wal/* $tmpdir/
+find $PGSQL_BASE/data/pg_wal -maxdepth 1 -type f -exec cp -t $tmpdir {} +
 fi
 
 if [[ $(test -d $PGSQL_BASE/data/pg_replslot && ls -1 $PGSQL_BASE/data/pg_replslot | wc -l) -gt 0 ]]; then
@@ -313,7 +314,7 @@ if [[ -f $PGSQL_BASE/data/tablespace_map && $(cat $PGSQL_BASE/data/tablespace_ma
 fi
 
 if [[ $TVD_PGVERSION -ge 12 ]]; then 
-   printheader "Updating $PGSQL_BASE/postgresql.conf."
+   printheader "Updating $PGSQL_BASE/etc/postgresql.conf."
    if [[ ! -z $untiltime ]]; then
       set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_time "'$untiltime'"
    else

@@ -52,6 +52,9 @@ PARAMETERS_FILE=$PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf
 [[ ! -f $PARAMETERS_FILE ]] && echo "Cannot find configuration file $PARAMETERS_FILE." && exit 1
 source $PARAMETERS_FILE
 
+[[ ! -f $PGOPERATE_BASE/lib/shared.lib ]] && echo "Cannot read $PGOPERATE_BASE/lib/shared.lib file." && exit 1
+source $PGOPERATE_BASE/lib/shared.lib
+
 
 # Define log file
 prepare_logdir
