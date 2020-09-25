@@ -1,11 +1,18 @@
-# TVD-PgOperate Tool-set to operate PostgreSQL clusters
+# pgOperate -  Tool Set to operate PostgreSQL Clusters
 ---
+
+pgOperate is a tool that simplifies the operation of Community PostgreSQL cluster (versions 9.6+).
+
 
 ## Prerequisites
 
-PgOperate requires PgBaseEnv.
+pgOperate requires pgBaseEnv.
 
-First PgBaseEnv must be installed.
+First pgBasEnv must be installed.
+
+
+## License
+The pgOperate is released under the APACHE LICENSE, VERSION 2.0, that allows a collaborative open source software development.
 
 
 ## PostgreSQL cluster management scripts developed to automate regular tasks.
@@ -13,12 +20,12 @@ First PgBaseEnv must be installed.
 | Script                  | Description                                                            |
 | ----------------------- | ---------------------------------------------------------------------- |
 | **create_cluster.sh**   | Creates new PostgreSQL cluster.                                        |
-| **remove_cluster.sh**   | Remove PostgreSQL cluster.                                             |
+| **remove_cluster.sh**   | Removes PostgreSQL cluster.                                             |
 | **prepare_master.sh**   | Prepares PostgreSQL cluster to master role.                            |
 | **create_slave.sh**     | Creates standby cluster.                                               |
 | **promote.sh**          | Promotes standby to master.                                            |
 | **reinstate.sh**        | Starts old master as new standby.                                      |
-| **backup.sh**           | Backup PostgreSQL cluster.                                             |
+| **backup.sh**           | Backs up PostgreSQL cluster.                                             |
 | **restore.sh**          | Restore PostgreSQL cluster.                                            |
 | **check.sh**            | Executes different monitoring checks.                                  |
 
@@ -35,23 +42,24 @@ First PgBaseEnv must be installed.
 
 | Libraries                | Description                                                            |
 | ------------------------ | ---------------------------------------------------------------------- |
-| **pgoperate**            | Wrapper around all PgOperate scripts. Central execution point.         |
-| **install_pgoperate.sh** | PgOperate installation script.                                         |
+| **pgoperate**            | Wrapper around all pgOperate scripts. Central execution point.         |
+| **install_pgoperate.sh** | pgOperate installation script.                                         |
 | **root.sh**              | Script to execute root actions after installation.                     |
-| **bundle.sh**            | Generates installation bundle for PgOperate.                           |
+| **bundle.sh**            | Generates installation bundle for pgOperate.                           |
+
 
 
 
 
 ## General concept
 
-Each PostgreSQL cluster installation using PgOperate scripts will have following structure.
+Each PostgreSQL cluster installation using pgOperate scripts will have following structure.
 
-Like postgresql itself, we create single directory, one level over `PGDATA`, which will act as the base for the cluster.
+Like PostgreSQL itself, we create single directory, one level over `PGDATA`, which will act as the base for the cluster.
 
 We call this directory `PGSQL_BASE`.
 
-The directory structure of the PgOperate itself is as follows:
+The directory structure of the pgOperate itself is as follows:
 
 ```
 $PGOPERATE_BASE ┐
@@ -88,9 +96,9 @@ $PGOPERATE_BASE ┐
                             └── pgoperate-<version>.tar
 ````
 
-Each installation will have its own single parameters file. The format of the parameter filename is important, it must be `parameters_<alias>.conf`. Where `alias` is the PgBaseEnv alias of the PostgreSQL cluster. It will be used to set its environment.
+Each installation will have its own single parameters file. The format of the parameter filename is important, it must be `parameters_<alias>.conf`. Where `alias` is the pgBasEnv alias of the PostgreSQL cluster. It will be used to set its environment.
 
-Parameter file includes all parameters required for cluster creation, backup, replication and monitoring. Everything in one place. All PgOperate scripts will use this parameter file for the current alias to get required values. It is our single point of truth.
+The parameter file includes all parameters required for cluster creation, backup, replication and monitoring. Everything in one place. All pgOperate scripts will use this parameter file for the current alias to get required values. It is our single point of truth.
 
 The location of the cluster base directory `PGSQL_BASE` will be defined in the clusters `parameters_<alias>.conf` file as well.
 
@@ -150,9 +158,9 @@ Main location to all log files related to the current cluster.
 
 `server.log` - Is the cluster main log file. Any problems during cluster startup will be logged here. After successful start logging will be handed over to logging collector.
 
-`postgresql-<n>.log` - Logging collector output files. By default PgOperate will use day of the month in place of n.
+`postgresql-<n>.log` - Logging collector output files. By default pgOperate will use day of the month in place of n.
 
-Sub-folder `tools` will include output logs from all the PgOperate scripts. Any script executed will log its output into this directory. Log filename will include script name and timestamp. First two lines of the logfile will be the list of arguments used to execute script and the current user id.
+Sub-folder `tools` will include output logs from all the pgOperate scripts. Any script executed will log its output into this directory. Log filename will include script name and timestamp. First two lines of the logfile will be the list of arguments used to execute script and the current user id.
 
 #### cert
 
@@ -190,10 +198,10 @@ Parameters:
 
 | Parameter                 | Default value                            | Description                                                                  |
 | ------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------- |
-| **TVD_PGHOME_ALIAS**      |                                          | The PgBaseEnv alias for the PostgreSQL binaries home to be used for this cluster creation.            |
+| **TVD_PGHOME_ALIAS**      |                                          | The pgBasEnv alias for the PostgreSQL binaries home to be used for this cluster creation.            |
 | **PGSQL_BASE**            |                                          | Cluster base directory.            |
-| **TOOLS_LOG_RETENTION_DAYS** | `30`                                  | Retention in days of the log files generated by the PgOperate scripts in `$PGSQL_BASE/log/tools` location.                                   |
-| **PG_PORT**               |                                          | Cluster port to create the cluster. It will be also registered in PgBaseEnv.                                   |
+| **TOOLS_LOG_RETENTION_DAYS** | `30`                                  | Retention in days of the log files generated by the pgOperate scripts in `$PGSQL_BASE/log/tools` location.                                   |
+| **PG_PORT**               |                                          | Cluster port to create the cluster. It will be also registered in pgBasEnv.                                   |
 | **PG_ENCODING**           | `UTF8`                                   | The character set of the cluster. Used only during creation.                                   |
 | **PG_DATABASE**           |                                          | Database name which will be created after installation. If empty, then no database will be created                     |
 | **PG_ENABLE_CHECKSUM**    | `yes`                                    | Checksums on data pages. |
@@ -241,7 +249,7 @@ This script can be used to create a bundle for the installation.
 
 Execute it after modifications in some of the scripts.
 
-It will create bundle by default in `$PGOPERATE_BASE/bundle` folder.
+It will create the bundle by default in `$PGOPERATE_BASE/bundle` folder.
 
 If you want to create bundle in some other location, then provide target folder as first argument.
 
@@ -269,9 +277,9 @@ It will add `01_postgres` file into `/etc/sudoers.d` to allow `postgres` user to
 ## pgoperate
 ---
 
-`pgoperate` is main interface to call all the PgOperate scripts.
+`pgoperate` is main interface to call all the pgOperate scripts.
 
-During installation the alias pointing to it will be created in PgBaseEnv standard config file. That is why pgoperate can be called from any location.
+During installation the alias pointing to it will be created in pgBasEnv standard config file. That is why pgoperate can be called from any location.
 
 But to call it from inside the scripts use full path like `$PGOPERATE_BASE/bin/pgoperate`
 
@@ -311,7 +319,7 @@ Parameters file for this alias must exist in `$PGOPERATE_BASE/etc` before execut
 
 The `$PGSQL_BASE` directory will be created. All subdirectories will be also created.
 
-Cluster will be registered with PgBaseEnv. 
+Cluster will be registered with pgBasEnv. 
 
 Next steps will be performed:
 
@@ -319,12 +327,12 @@ Next steps will be performed:
 * Schema with same name `$PG_DATABASE` will be created.
 * User with same name `$PG_DATABASE` and without password will be created. This user will be owner of `$PG_DATABASE` schema.
 * Replication related parameters will be adjusted
-* Replication user and replication slot(s) will be create
+* Replication user and replication slot(s) will be created
 * `pg_hba.conf` file will be updated
 
 Script must be executed as postgres user.
 
-At the end of installation script will offer to execute `root.sh` as root user.
+At the end of installation script it will offer to execute `root.sh` as root user.
 
 Switch to root and execute `root.sh`. It will create `postgresql-<alias>` unit file in /etc/systemd/system for systemctl daemon. Cluster will be started with systemctl and in-cluster actions will be executed.
 
@@ -362,7 +370,7 @@ Parameters file for this alias must exist in `$PGOPERATE_BASE/etc` before execut
 
 The `$PGSQL_BASE` directory will be removed.
 
-Cluster will be unregistered from PgBaseEnv. 
+Cluster will be unregistered from pgBasEnv. 
 
 Next steps will be performed:
 
@@ -489,7 +497,7 @@ pgoperate --promote
 
 Script to start old primary as new standby server.
    
-Script will try to start as standby in next oder:
+Script will try to start as standby in next order:
 
 1. Start old primary as new standby
 2. If it fails to sync with master, then sync with `pg_rewind`
@@ -524,7 +532,7 @@ Backup will be made from online running cluster, it is hot full backup.
 
 Backup can be execute on primary or standby.
 
-Following backup strategies possible:
+Following backup strategies are possible:
  * Database backup on master site and archived WAL backup on master site
  * Database backup on standby site and archived WAL backup on standby site
  * Database backup on standby site and archive WAL backup on primary site (Recommended)
@@ -648,7 +656,7 @@ Then check function must be defined in `check.lib` file.
 
 If check defined then function with the specified name will be executed from `check.lib` library.
 
-Function must return 0 on check success and 0 on check not passed.
+Function must return 0 on check success and not 0 on check not passed.
 
 Number of times check was not passed will be counted by check.sh, check function do not require to implement this logic.
 If `PG_CHECK_<CHECK NAME>_OCCURRENCE` is defined, then `check.sh` will alarm only after defined number of negative checks.
