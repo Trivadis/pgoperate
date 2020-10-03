@@ -33,10 +33,12 @@ TVDBASE_DEF=$HOME/tvdtoolbox
 unset TVDBASE
 
 
-TARFILE=$(ls -1tr pgoperate-*.tar | tail -1)
+TARFILE=$(ls -1tr pgoperate-*.tar 2>/dev/null | tail -1)
 if [[ -z $TARFILE ]]; then
-	echo "ERROR: Tar file pgoperate-(VERSION).tar do not found in current directory!"
+	echo "ERROR: Tar file pgoperate-<VERSION>.tar do not found in current directory!"
 	exit 1
+else
+  Installing from $TARFILE
 fi
 
 [[ ! -f $HOME/.PGBASENV_HOME ]] && echo -e "\nERROR: PgBaseEnv is required for PgOperate. Please install it first.\n" && exit 1

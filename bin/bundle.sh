@@ -51,7 +51,7 @@ self=$(basename $0)
 
 echo -e "Creating tar file: pgoperate-${current_version}.tar\n"
 
-tar --exclude="pgoperate/.git" --exclude="pgoperate/.gitignore" --exclude="pgoperate/bin/$self" --exclude="pgoperate/bin/install_pgoperate.sh" --exclude="pgoperate/etc/*.conf" --exclude="pgoperate/bundle/*" -cvf "$bundle_dir/pgoperate-${current_version}.tar" pgoperate
+tar --exclude="pgoperate/.git" --exclude="pgoperate/.gitignore" --exclude="pgoperate/bin/$self" --exclude="pgoperate/bin/install_pgoperate.sh" --exclude="pgoperate/log/*" --exclude="pgoperate/etc/*.conf" --exclude="pgoperate/bundle/*" -cvf "$bundle_dir/pgoperate-${current_version}.tar" pgoperate
 
 if [[ $? -eq 0 ]]; then
 	echo -e "\nSUCCESS\n"
