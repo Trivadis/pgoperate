@@ -38,7 +38,9 @@ if [[ -z $TARFILE ]]; then
 	echo "ERROR: Tar file pgoperate-<VERSION>.tar do not found in current directory!"
 	exit 1
 else
-  Installing from $TARFILE
+  echo
+  echo "Installing from $TARFILE"
+  echo
 fi
 
 [[ ! -f $HOME/.PGBASENV_HOME ]] && echo -e "\nERROR: PgBaseEnv is required for PgOperate. Please install it first.\n" && exit 1
