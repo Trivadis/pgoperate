@@ -24,8 +24,10 @@ function help() {
 	echo "
 
 Available options:
-  
+
+  --version                Show version.  
   --create-cluster         Create new PostgreSQL Cluster
+  --add-cluster            Add existing cluster to pgOperate environment
   --remove-cluster         Removes PostgreSQL Cluster
   --backup                 Backup PostgreSQL CLuster
   --restore                Restore PostgreSQL Cluster
@@ -43,6 +45,10 @@ Available options:
 
 case $1 in
 
+ --version) shift
+            cat $PGOPERATE_BASE/bin/VERSION
+            ;;
+
   --backup) shift
             $PGOPERATE_BASE/bin/backup.sh "$@"
             ;;
@@ -58,6 +64,10 @@ case $1 in
   --create-cluster) shift
             $PGOPERATE_BASE/bin/create_cluster.sh "$@"
             ;;  
+
+  --add-cluster) shift
+            $PGOPERATE_BASE/bin/add_cluster.sh "$@"
+            ;;
 
   --remove-cluster) shift
             $PGOPERATE_BASE/bin/remove_cluster.sh "$@"

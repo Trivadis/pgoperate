@@ -41,6 +41,8 @@ echo -e "\nCurrent version: ${current_version}\n"
 mkdir -p $bundle_dir
 echo -e "Destination directory: $bundle_dir\n"
 
+[[ ! -z $bundle_dir ]] && rm -f $bundle_dir/*
+
 cp install_pgoperate.sh $bundle_dir
 [[ $? -gt 0 ]] && echo -e "\nFAILURE\n" && exit 1
 

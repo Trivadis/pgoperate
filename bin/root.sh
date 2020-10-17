@@ -22,6 +22,8 @@
 # Executes root related action.
 
 
+PG_SUPERUSER=postgres
+
 add_sudoers_rules() {
 
 echo "

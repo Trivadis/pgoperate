@@ -130,12 +130,13 @@ PGSQL_BASE=$_SAVE_
 
 [[ -z $PGDATA ]] && echo "ERROR: PGDATA is not defined, check if the cluster alias specified correctly." && exit 1
 
-read -p "Cluster $PG_CLUSTER_ALIAS will be deleted. Cluster base directory including \$PGDATA will be removed. Continue? [y/n]" -n 1 -r
+read -p "Cluster $PG_CLUSTER_ALIAS will be deleted. Cluster base directory including \$PGDATA will be removed. Continue? [yes/no]: "
 echo    # (optional) move to a new line
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+if [[ ! $REPLY == "yes" ]]; then
   echo "Nothing done."
   exit 0
 fi
+
 
 # Define log file
 mkdir -p $PGOPERATE_BASE/log

@@ -151,9 +151,9 @@ echo -e >> $LOGFILE
 
 
 if [[ -z $TVD_PGHOME_ALIAS ]]; then
-  TVD_PGHOME_ALIAS=$(grep -vE "^#" $TVDPGENV_BASE/etc/pghometab | head -1 | cut -d";" -f4)
+  TVD_PGHOME_ALIAS=$(grep -vE "^#" $PGBASENV_BASE/etc/pghometab | head -1 | cut -d";" -f4)
   if [[ -z $TVD_PGHOME_ALIAS ]]; then
-  	echo "ERROR: No home in $TVDPGENV_BASE/etc/pghometab file found! Check your installation."
+  	echo "ERROR: No home in $PGBASENV_BASE/etc/pghometab file found! Check your installation."
   	exit 1
   else
     echo "INFO: Parameter TVD_PGHOME_ALIAS is not set in parameters file. The first home alias will be used: $TVD_PGHOME_ALIAS"
