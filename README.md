@@ -17,7 +17,7 @@ The pgOperate is released under the APACHE LICENSE, VERSION 2.0, that allows a c
 
 ## Examples
 
-# Create new Cluster
+### Create new Cluster
 
 If you want to create new cluster with alias sales:
 
@@ -29,7 +29,7 @@ vi parameters_sales.conf
 pgoperate --create-cluster --alias sales
 ```
 
-# Make a backup
+### Make a backup
 
 ```
 pgoperate --backup
@@ -49,7 +49,7 @@ Number backups: 2
 
 ```
 
-# Restore
+### Restore
 
 Execute point-in-time recovery
 
@@ -60,7 +60,7 @@ pgoperate --restore until_time="2020-10-25 13:05:00"
 Correct backup subdirectory will be identified and Cluster will be restored to th specified time point.
 
 
-# Create standby
+### Create standby
 
 If sales cluster runs on node1 and we want to create standby on node2, then copy $PGOPERATE_BASE/etc/parameters_sales.conf from node1 to node2.
 
@@ -74,7 +74,7 @@ Then create standby cluster:
 node2 $ pgoperate --create-slave --master node1
 ```
 
-# Do a switch-over
+### Do a switch-over
 
 Stop the master on node1:
 ```
