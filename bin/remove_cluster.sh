@@ -157,7 +157,8 @@ PG_BIN_HOME=$TVD_PGHOME/bin
 
 
 printheader "Stopping cluster."
-sudo systemctl stop $PG_SERVICE_FILE
+#sudo systemctl stop $PG_SERVICE_FILE
+stop_cluster
 
 printheader "Removing $PGSQL_BASE directory."
 if [[ -d $PGSQL_BASE ]]; then

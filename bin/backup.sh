@@ -464,12 +464,15 @@ if [[ ! "${ARCH_MODE,,}" == "on" && ! "${ARCH_MODE,,}" == "always" ]]; then
   if [[ "$ENABLEARCH" == true ]]; then
      info "Cluster will be restarted to set archive_mode"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" archive_mode "always"
-     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" archive_command "'test ! -f $PGSQL_BASE/arch/%f && cp %p $PGSQL_BASE/arch/%f'"
-     sudo systemctl stop postgresql-${PGBASENV_ALIAS}
-     sudo systemctl start postgresql-${PGBASENV_ALIAS}
+     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" archive_command "'test ! -f $PGSQL_BASE/arch/%f \&\& cp %p $PGSQL_BASE/arch/%f'"
+     stop_cluster
+     start_cluster
   fi
 else
   info "Cluster is in archive log mode."
+  if [[ "$ENABLEARCH" == true ]]; then
+     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" archive_command "'test ! -f $PGSQL_BASE/arch/%f \&\& cp %p $PGSQL_BASE/arch/%f'"
+  fi
 fi
 
 [[ "$ENABLEARCH" == true ]] && info "Done." && exit 0

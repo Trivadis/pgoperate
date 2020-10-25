@@ -8,6 +8,40 @@ prepare_logdir() {
   find $PGSQL_BASE/log/tools -mtime +$rdays -exec rm -f {} \;
 }
 
+stop_cluster() {
+  local RC
+  if [[ -z $PG_STOP_SCRIPT ]]; then 
+    sudo systemctl stop postgresql-${PGBASENV_ALIAS} 
+    RC=$?
+  else 
+    $PG_STOP_SCRIPT
+    RC=$?
+  fi
+  if [[ $RC -gt 0 ]]; then
+     echo "ERROR: Failed to stop the cluster. Note, that you can use custom stop script defined by PG_STOP_SCRIPT parameter in parameters file."
+     exit $RC
+  fi
+}
+
+start_cluster() {
+  local message="$1"
+  local RC
+  if [[ -z $PG_START_SCRIPT ]]; then 
+    sudo systemctl start postgresql-${PGBASENV_ALIAS} 
+    RC=$?
+  else 
+    $PG_START_SCRIPT
+    RC=$?
+  fi
+  if [[ $RC -gt 0 ]]; then
+     echo "ERROR: Failed to start the cluster. Check the logs in $PGSQL_BASE/log for details."
+     echo "ERROR: Note, that you can use custom start script defined by PG_START_SCRIPT parameter in parameters file."
+     [[ ! -z $message ]] && echo "$message"
+     exit $RC
+  fi
+}
+
+
 modifyFile() {
   local v_file=$1
   local v_op=$2
@@ -65,6 +99,13 @@ if [[ ${#repval} -gt 0 ]]; then
 else
   modifyFile $config add "$param = $value\t\t# Added by PgOperate"
 fi
+
+if [[ $config =~ postgresql.conf ]]; then
+  value="${value//\\&/&}"
+  $TVD_PGHOME/bin/psql -U $PG_SUPERUSER -d postgres -c "alter system set ${param}=${value}" -t > /dev/null 2>&1
+  $TVD_PGHOME/bin/psql -U $PG_SUPERUSER -d postgres -c "select pg_reload_conf()" -t > /dev/null 2>&1
+fi
+
 }
 
 
@@ -177,8 +218,8 @@ update_pg_hba() {
 sed -i "s|^local\s\+all\s\+all\s\+trust$|local   all             $PG_SUPERUSER                                trust|g" $PGSQL_BASE/etc/pg_hba.conf
 sed -i "s|^host\s\+all\s\+all\s\+127.0.0.1/32\s\+trust$|#host    all             $PG_SUPERUSER             127.0.0.1/32       trust|g" $PGSQL_BASE/etc/pg_hba.conf
 sed -i "s|^host\s\+all\s\+all\s\+::1/128\s\+trust$|#host    all             $PG_SUPERUSER             ::1/128            trust|g" $PGSQL_BASE/etc/pg_hba.conf
-sed -i "s|^local\s\+replication\s.\+$|local   replication     all                                     scram-sha-256|g" $PGSQL_BASE/etc/pg_hba.conf
-sed -i "s|^host\s\+replication\s.\+127.0.0.1/32\s.\+$|host    replication     all             127.0.0.1/32            scram-sha-256|g" $PGSQL_BASE/etc/pg_hba.conf
+sed -i "s|^local\s\+replication\s.\+$|local   replication     all                                     trust|g" $PGSQL_BASE/etc/pg_hba.conf
+sed -i "s|^host\s\+replication\s.\+127.0.0.1/32\s.\+$|host    replication     all             127.0.0.1/32            trust|g" $PGSQL_BASE/etc/pg_hba.conf
 sed -i "s|^host\s\+replication\s.\+::1/128\s.\+$|host    replication     all             ::1/128            scram-sha-256|g" $PGSQL_BASE/etc/pg_hba.conf
 echo -e "# For replication. Connect from remote hosts. #replication#\nhost    replication     replica      0.0.0.0/0      scram-sha-256" >> $PGSQL_BASE/etc/pg_hba.conf
 grep -q "#install.sh ssl#" $PGSQL_BASE/etc/pg_hba.conf
@@ -317,6 +358,7 @@ modify_password_file() {
   local cmd
   [[ $_IS_ROOT -eq 0 ]] && cmd="su postgres -c" || cmd="eval"
   $cmd "touch ~/.pgpass"
+  $cmd "sed -i "/\*:$port:\*:$user:.*/d" ~/.pgpass"
   $cmd "echo \"*:$port:*:$user:$pwd\" >> ~/.pgpass"
   chmod 0600 ~/.pgpass
 }

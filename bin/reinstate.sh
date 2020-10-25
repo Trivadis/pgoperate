@@ -187,14 +187,14 @@ do_rewind(){
   #   Create the password file in the same directory as $0 script and set PG_SUPERUSER_PWDFILE parameter in parameters.conf."
   #   exit 1
   # fi
-   sudo systemctl stop postgresql-${PGBASENV_ALIAS}
+   stop_cluster
    $SU_PREFIX "$PG_BIN_HOME/pg_rewind --target-pgdata=$PGSQL_BASE/data --source-server=\"host=$MASTER_HOST port=$PG_PORT user=$PG_SUPERUSER dbname=postgres connect_timeout=5\" -P"
    if [[ $TVD_PGVERSION -ge 12 ]]; then
      prepare_for_standby
    else
      create_recovery_file
    fi
-   sudo systemctl start postgresql-${PGBASENV_ALIAS}
+   start_cluster
 }
 
 do_duplicate(){
@@ -252,7 +252,7 @@ if [[ $IS_STANDBY == "STANDBY" ]]; then
   printheader "Trying to start standby"
   echo "INFO: Cluster was in standby mode."
   echo "INFO: Staring the Cluster."
-  sudo systemctl start postgresql-${PGBASENV_ALIAS}
+  start_cluster
   exit $?
 
 elif [[ $IS_STANDBY == "NOTSTANDBY" ]]; then
@@ -262,8 +262,7 @@ elif [[ $IS_STANDBY == "NOTSTANDBY" ]]; then
   else
     create_recovery_file
   fi
-  sudo systemctl start postgresql-${PGBASENV_ALIAS}
-  [[ $? -gt 0 ]] && echo "CRITICAL: Manual intervention required." && exit 1
+  start_cluster "CRITICAL: Manual intervention required."
   repstatus=$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d postgres -At -c "select status from pg_stat_wal_receiver where conninfo like '%host=$MASTER_HOST%'")
   if [[ $repstatus == "streaming" ]]; then
      echo "INFO: WAL receiver in streaming mode."

@@ -28,7 +28,7 @@ PG_ENABLE_CHECKSUM=yes
 # The superuser account for the cluster
 PG_SUPERUSER=postgres
 
-# The password for the superuser account.
+# The password for the superuser account. If specified, password will be added into ~/.pgpass for the port $PG_PORT.
 PG_SUPERUSER_PWD=
 
 # Percentage of the host memory to use for cluster shared buffers
@@ -62,6 +62,10 @@ log_truncate_on_rotation = on
 log_rotation_age = 1d
 log_rotation_size = 0
 "
+
+# The absolute path to scripts to start and stop the cluster. Use it if cluster is not controlled by the default systemctl service postgresql-<alias>.serivce.
+PG_START_SCRIPT=
+PG_STOP_SCRIPT=
 
 
 

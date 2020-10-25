@@ -174,7 +174,7 @@ printheader "Setting parameters in postgresql.conf"
 update_db_params
 
 printheader "Stopping postgresql service with systemctl"
-sudo systemctl stop postgresql-${PGBASENV_ALIAS}
+stop_cluster
 
 if [[ $FORCE -eq 1 ]]; then
   printheader "Force option specified. Clearing data directory $PGSQL_BASE/data"
@@ -205,8 +205,7 @@ printheader "Updating pg_hba.conf file"
 update_pg_hba
 
 printheader "Starting slave postgresql"
-sudo systemctl start postgresql-${PGBASENV_ALIAS}
-
+start_cluster
 
 printheader "Check the replication status"
 sleep 5

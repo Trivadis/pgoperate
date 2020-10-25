@@ -32,7 +32,16 @@ Adds existing running PostgreSQL cluster to the pgOperate environment.
 
 Arguments:
               -a|--alias <alias_name> -  Alias name of the running cluster to be added.
+              -s|--silent             -  Silent mode.
 
+              Parameters for silent mode:
+                 -b|--base                   - (Mandatory) Base directory name
+                 -s|--superuser <username>   - (Optional) Cluster superuser. Default is postgres.                            
+                 -w|--password               - (Optional) Superuser password.
+                 -l|--backup-dir <dirname>   - (Optional) Directory for backups. Default is \$PGSQL_BASE/backup
+                 -c|--arch-dir <dirname>     - (Optional) Directory for archived logs. Default is \$PGSQL_BASE/arch
+                 -k|--start-script           - (Optional) Script to start Cluster.
+                 -n|--stop-script            - (Optional) Script to stop Cluster.
 
 "
 
@@ -104,6 +113,89 @@ while (( "$#" )); do
         exit 1
       fi
       ;;
+  -s|--silent)
+        SILENT_MODE=YES
+        shift
+      ;;
+
+  -b|--base)
+      if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
+        INPUT_PGSQL_BASE=$2
+        shift 2
+      else
+        echo "ERROR: Base directory name is missing" >&2
+        help
+        exit 1
+      fi
+      ;;
+
+  -s|--superuser)
+      if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
+        INPUT_SUPERUSER=$2
+        shift 2
+      else
+        echo "ERROR: Superuser name is missing" >&2
+        help
+        exit 1
+      fi
+      ;;
+
+  -w|--password)
+      if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
+        INPUT_SUPERUSER_PWD=$2
+        shift 2
+      else
+        echo "ERROR: Superuser password is missing" >&2
+        help
+        exit 1
+      fi
+      ;;
+
+  -l|--backup-dir)
+      if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
+        INPUT_BACKUP_LOCATION=$2
+        shift 2
+      else
+        echo "ERROR: Backup location is missing" >&2
+        help
+        exit 1
+      fi
+      ;;
+
+  -c|--arch-dir)
+      if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
+        INPUT_ARCH_LOCATION=$2
+        shift 2
+      else
+        echo "ERROR: Archive location is missing" >&2
+        help
+        exit 1
+      fi
+      ;;
+
+  -k|--start-script)
+      if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
+        INPUT_PG_START_SCRIPT=$2
+        shift 2
+      else
+        echo "ERROR: Start script name is missing" >&2
+        help
+        exit 1
+      fi
+      ;;
+
+  -n|--stop-script)
+      if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
+        INPUT_PG_STOP_SCRIPT=$2
+        shift 2
+      else
+        echo "ERROR: Start script name is missing" >&2
+        help
+        exit 1
+      fi
+      ;;
+
+
     help) help
           exit 0
           ;;
@@ -119,6 +211,17 @@ while (( "$#" )); do
   esac
 done
 
+if [[ $SILENT_MODE == "YES" ]]; then
+ if [[ -z $INPUT_PGSQL_BASE ]]; then
+   echo "ERROR: Please provide base directory." >&2
+   help
+   exit 1
+ fi
+
+ if [[ -z $INPUT_SUPERUSER ]]; then
+   INPUT_SUPERUSER=postgres
+ fi
+fi
 
 [[ ! -f $HOME/.pgbasenv_profile ]] && echo "ERROR: Please check if pgBasEnv installed for this user." && exit 1
 [[ -z $PG_CLUSTER_ALIAS ]] && echo "ERROR: Provide alias name for the cluster to be added." && exit 1
@@ -166,18 +269,25 @@ else
   echo "INFO: Parameter TVD_PGHOME_ALIAS will be set to $TVD_PGHOME_ALIAS"
 fi
 
+echo "PGDATA=$PGDATA"
+
 printheader "Processing PGSQL_BASE"
-read -p "Please, provide the location for the PGSQL_BASE directory, it will be base location for this cluster: "
+if [[ $SILENT_MODE == "YES" ]]; then
+  REPLY=$INPUT_PGSQL_BASE
+else 
+  read -p "Please, provide the location for the PGSQL_BASE directory, it will be base location for this cluster: "
+fi
 echo
 if [[ ! -z $REPLY ]]; then
   PGSQL_BASE=$REPLY
   if [[ ! -d $PGSQL_BASE ]]; then
-     mkdir -p $PGSQL_BASE/$PG_CLUSTER_ALIAS
      PGSQL_BASE=$PGSQL_BASE/$PG_CLUSTER_ALIAS
+     mkdir -p $PGSQL_BASE
      ln -s $PGDATA $PGSQL_BASE/data
   else
      if [[ "$(dirname $PGDATA)" != "$PGSQL_BASE" ]]; then
         PGSQL_BASE=$PGSQL_BASE/$PG_CLUSTER_ALIAS
+        mkdir -p $PGSQL_BASE
         ln -s $PGDATA $PGSQL_BASE/data
      else
         if [[ $(basename $PGDATA) != "data" ]]; then
@@ -197,7 +307,7 @@ echo "PGSQL_BASE=$PGSQL_BASE"
 printheader "Processing PGSQL_BASE/etc"
 if [[ ! -d $PGSQL_BASE/etc ]]; then
   echo "INFO: Directory not exists."
-  if [[ $(dirname $TVD_PGCONF) == $(dirname $TVD_PGHBA) ]]; then
+  if [[ "$(dirname $TVD_PGCONF)" == "$(dirname $TVD_PGHBA)" && "$(dirname $TVD_PGCONF)" != "$PGDATA" ]]; then
     ln -s $(dirname $TVD_PGCONF) $PGSQL_BASE/etc
     echo "INFO: Symbolic link \$PGSQL_BASE/etc created pointing to $(dirname $TVD_PGCONF)"
   else
@@ -237,7 +347,11 @@ fi
 
 
 printheader "Processing superuser details"
-read -p "Please, provide the superuser [postgres]: "
+if [[ $SILENT_MODE == "YES" ]]; then
+  REPLY=$INPUT_SUPERUSER
+else
+  read -p "Please, provide the superuser [postgres]: "
+fi
 echo
 if [[ ! -z $REPLY ]]; then
   PG_SUPERUSER=$REPLY
@@ -249,7 +363,11 @@ echo
 echo "PG_SUPERUSER=$PG_SUPERUSER"
 echo
 
-read -p "Please, provide the superuser password: "
+if [[ $SILENT_MODE == "YES" ]]; then
+  REPLY=$INPUT_SUPERUSER_PWD
+else
+  read -p "Please, provide the superuser password: "
+fi
 echo
 if [[ ! -z $REPLY ]]; then
   PG_SUPERUSER_PWD=$REPLY
@@ -260,18 +378,19 @@ fi
 
 printheader "Processing backup parameters"
 if [[ ! -d $PGSQL_BASE/backup ]]; then
-   read -p "Please, provide the location for the backups [\$PGSQL_BASE/backup]: "
-   echo
-   if [[ ! -z $REPLY ]]; then
-     BACKUP_DIR=$REPLY
-     if [[ $BACKUP_DIR != $PGSQL_BASE/backup ]]; then
-       ln -s $BACKUP_DIR \$PGSQL_BASE/backup
-       echo "INFO: Symbolic link \$PGSQL_BASE/backup created pointing to $BACKUP_DIR"
-       BACKUP_LOCATION="\$PGSQL_BASE/backup"
-     fi
+   if [[ $SILENT_MODE == "YES" ]]; then
+     REPLY=$INPUT_BACKUP_LOCATION
    else
-     BACKUP_LOCATION="\$PGSQL_BASE/backup"
+     read -p "Please, provide the location for the backups [\$PGSQL_BASE/backup]: "
+   fi
+   BACKUP_DIR=$REPLY
+   echo
+   if [[ ! -z $BACKUP_DIR && $BACKUP_DIR != $PGSQL_BASE/backup ]]; then     
+       ln -s $BACKUP_DIR $PGSQL_BASE/backup
+       echo "INFO: Symbolic link \$PGSQL_BASE/backup created pointing to $BACKUP_DIR"
+   else
      echo "INFO: Backup location will be \$PGSQL_BASE/backup"
+     mkdir -p $PGSQL_BASE/backup
    fi
 
 else
@@ -281,29 +400,49 @@ else
      exit 1
   else
      echo "INFO: \$PGSQL_BASE/backup will be used as backup location."
-     BACKUP_LOCATION="\$PGSQL_BASE/backup"
   fi
 fi
 
 echo
 
 if [[ ! -d $PGSQL_BASE/arch ]]; then
-   read -p "Please, provide the spare location for the archived WALs [\$PGSQL_BASE/arch]: "
+   if [[ $SILENT_MODE == "YES" ]]; then
+     REPLY=$INPUT_ARCH_LOCATION
+   else
+     read -p "Please, provide the spare location for the archived WALs [\$PGSQL_BASE/arch]: "
+   fi
+   ARCH_DIR=$REPLY
    echo
-   if [[ ! -z $REPLY ]]; then
-     ARCH_DIR=$REPLY
-     if [[ $ARCH_DIR != $PGSQL_BASE/arch ]]; then
-       ln -s $ARCH_DIR \$PGSQL_BASE/arch
-       echo "INFO: Symbolic link \$PGSQL_BASE/arch created pointing to $ARCH_DIR"
-     fi
+   if [[ ! -z $ARCH_DIR && $ARCH_DIR != "$PGSQL_BASE/arch" ]]; then
+     ln -s $ARCH_DIR $PGSQL_BASE/arch
+     echo "INFO: Symbolic link \$PGSQL_BASE/arch created pointing to $ARCH_DIR"
    else
      echo "INFO: Arch location will be \$PGSQL_BASE/arch"
+     mkdir -p $PGSQL_BASE/arch
    fi
 
 else
   echo "INFO: Directory \$PGSQL_BASE/arch already exists."
   echo "INFO: \$PGSQL_BASE/arch will be used as spare archive location."
 fi
+
+
+printheader "Processing start/stop scripts"
+if [[ $SILENT_MODE == "YES" ]]; then
+  REPLY=$INPUT_PG_START_SCRIPT
+else 
+  read -p "If you will not use systemctl unit file postgresql-$PG_CLUSTER_ALIAS.service, then provide cluster start script: "
+fi
+echo
+PG_START_SCRIPT=$REPLY
+
+if [[ $SILENT_MODE == "YES" ]]; then
+  REPLY=$INPUT_PG_STOP_SCRIPT
+else 
+  read -p "If you will not use systemctl unit file postgresql-$PG_CLUSTER_ALIAS.service, then provide cluster stop script: "
+fi
+echo
+PG_STOP_SCRIPT=$REPLY
 
 
 
@@ -320,8 +459,9 @@ PG_ENABLE_CHECKSUM=$(pg_controldata | grep "Data page checksum version:" | cut -
 set_param "PG_ENABLE_CHECKSUM" "$PG_ENABLE_CHECKSUM"
 set_param "PG_SUPERUSER" "$PG_SUPERUSER"
 set_param "PG_SUPERUSER_PWD" "$PG_SUPERUSER_PWD"
-set_param "BACKUP_LOCATION" "$BACKUP_LOCATION"
-
+set_param "BACKUP_LOCATION" "\$PGSQL_BASE/backup"
+set_param "PG_START_SCRIPT" "$PG_START_SCRIPT"
+set_param "PG_STOP_SCRIPT" "$PG_STOP_SCRIPT"
 
 
 PG_SERVICE_FILE="postgresql-${PG_CLUSTER_ALIAS}.service"

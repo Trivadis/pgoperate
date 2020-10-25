@@ -187,8 +187,8 @@ if [[ "$track_commit_enabled" == "on" ]]; then
   reload_conf
 else
   printheader "Restarting postgresql"
-  sudo systemctl stop postgresql-${PGBASENV_ALIAS}
-  sudo systemctl start postgresql-${PGBASENV_ALIAS}
+  stop_cluster
+  start_cluster
 fi
 
 echo -e "\nLogfile of this execution: $LOGFILE\n"

@@ -157,7 +157,7 @@ if [[ $IS_STANDBY == "NOTSTANDBY" ]]; then
   printheader "Starting the cluster"
   echo "INFO: Cluster was not in standby mode."
   echo "INFO: Staring the Cluster."
-  sudo systemctl start postgresql-${PGBASENV_ALIAS}
+  start_cluster
   exit $?
 
 elif [[ $IS_STANDBY == "STANDBY" ]]; then

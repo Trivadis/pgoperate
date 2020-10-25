@@ -205,8 +205,10 @@ create_root_sh
 printheader "Adding entry into pgclustertab file."
 adding_entry_in_pgtab
 
+if [[ ! -z $PG_SUPERUSER_PWD ]]; then
 printheader "Adding entry into ~/.pgpass for superuser."
 modify_password_file "$PG_PORT" "$PG_SUPERUSER" "$PG_SUPERUSER_PWD" 
+fi
 
 echo -e
 echo "INFO: Please execute $PGSQL_BASE/scripts/root.sh as root user."

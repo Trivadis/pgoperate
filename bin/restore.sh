@@ -247,15 +247,8 @@ local tmpdir="/tmp/pgrestore_pg_wal"
 printheader "Stopping database cluster."
 
 #local current_wal=$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -c "SELECT file_name from pg_walfile_name_offset(pg_current_wal_lsn());" -t | xargs)
+stop_cluster
 
-local res
-sudo systemctl stop postgresql-${PGBASENV_ALIAS}
-res=$?
-
-if [[ $res -gt 0 ]]; then
-  error "Failed to stop postgres Cluster."
-  exit 1
-fi
 
 if [[ ! -d $PGSQL_BASE/data ]]; then
   info "Directory $PGSQL_BASE/data doesn't exist. Will be created."
@@ -350,13 +343,7 @@ recovery_end_command = 'rm -rf $tmpdir && rm -rf /tmp/pg_replslot'" > $PGSQL_BAS
 fi
 
 printheader "Starting database cluster to process recovery."
-sudo systemctl start postgresql-${PGBASENV_ALIAS}
-res=$?
-
-if [[ $res -gt 0 ]]; then
-  error "Failed to start postgres Cluster. Check the logs in $PGSQL_BASE/log for details."
-  exit 1
-fi
+start_cluster
 
 echo -e
 echo "Done success."

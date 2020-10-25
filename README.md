@@ -15,11 +15,92 @@ First pgBasEnv must be installed.
 The pgOperate is released under the APACHE LICENSE, VERSION 2.0, that allows a collaborative open source software development.
 
 
+## Examples
+
+# Create new Cluster
+
+If you want to create new cluster with alias sales:
+
+```
+cd $PGOPERATE_BASE/etc
+cp parameters_mycls.conf.tpl parameters_sales.conf
+vi parameters_sales.conf
+
+pgoperate --create-cluster --alias sales
+```
+
+# Make a backup
+
+```
+pgoperate --backup
+
+pgoperate --backup list
+
+Current cluster: sales
+
+Backup location: /u00/app/pgsql/test/sales/backup
+=========================================================================
+|Sub Dir|      Backup created|WALs count|Backup size(MB)|  WALs size(MB)|
+=========================================================================
+|      1| 2020-10-25 12:46:45|         4|              5|             81| <--- Oldest backup dir
+|      2| 2020-10-25 13:10:43|         2|              5|             33| <--- Current backup dir
+=========================================================================
+Number backups: 2
+
+```
+
+# Restore
+
+Execute point-in-time recovery
+
+```
+pgoperate --restore until_time="2020-10-25 13:05:00"
+```
+
+Correct backup subdirectory will be identified and Cluster will be restored to th specified time point.
+
+
+# Create standby
+
+If sales cluster runs on node1 and we want to create standby on node2, then copy $PGOPERATE_BASE/etc/parameters_sales.conf from node1 to node2.
+
+Then bootstrap empty cluster:
+```
+node2 $ pgoperate --create-cluster --alias sales
+```
+
+Then create standby cluster:
+```
+node2 $ pgoperate --create-slave --master node1
+```
+
+# Do a switch-over
+
+Stop the master on node1:
+```
+node1 $ sudo systemctl stop postgresql-sales
+```
+
+Promote standby to master on node2:
+```
+node2 $ pgoperate --promote
+```
+
+Start old primary as new standby:
+```
+node1 $ pgoperate --reinstate -m node2 -f
+```
+
+
+
+
+
 ## PostgreSQL cluster management scripts developed to automate regular tasks.
 
 | Script                  | Description                                                            |
 | ----------------------- | ---------------------------------------------------------------------- |
 | **create_cluster.sh**   | Creates new PostgreSQL cluster.                                        |
+| **add_cluster.sh**      | Add existing Cluster to pgOperate environment.                         |
 | **remove_cluster.sh**   | Removes PostgreSQL cluster.                                             |
 | **prepare_master.sh**   | Prepares PostgreSQL cluster to master role.                            |
 | **create_slave.sh**     | Creates standby cluster.                                               |
@@ -213,6 +294,8 @@ Parameters:
 | **SERVER_CERT**           |                                          | File with SSL server certificate. Usually called server.crt.                 |
 | **SERVER_KEY**            |                                          | File with SSL server private key. Usually called server.key.                 |
 | **PG_DEF_PARAMS**         | Default value is below                   | String variable which includes the init parameters separated by new line. These parameters will be set in postgresql.conf during installation. If `shared_buffers` will be set here, then it will be overridden by `PCTMEM` if defined. If `PCTMEM` is null then absolute value will be set. |
+| **PG_START_SCRIPT**       |                      | Custom script to start the cluster. If defined, then it will be used to start the cluster.                                             |
+| **PG_STOP_SCRIPT**       |                      | Custom script to stop the cluster. If defined, then it will be used to stop the cluster.                                             |
 | **BACKUP_LOCATION**       | `$PGSQL_BASE/backup`                     | Directory to store backup files.                                             |
 | **BACKUP_REDUNDANCY**     | `5`                                      | Backup redundancy. Count of backups to keep.                                                 |
 | **BACKUP_RETENTION_DAYS**  | `7`                                      | Backup retention in days. Keeps backups required to restore so much days back.  This parameter, if set, overrides BACKUP_REDUNDANCY.                                                |
@@ -289,7 +372,10 @@ pgoperate --help
 
 Available options:
 
+  --version                Show version.
   --create-cluster         Create new PostgreSQL Cluster
+  --add-cluster            Add existing cluster to pgOperate environment
+  --remove-cluster         Removes PostgreSQL Cluster
   --backup                 Backup PostgreSQL CLuster
   --restore                Restore PostgreSQL Cluster
   --check                  Execute monitoring checks
@@ -332,7 +418,7 @@ Next steps will be performed:
 
 Script must be executed as postgres user.
 
-At the end of installation script it will offer to execute `root.sh` as root user.
+At the end of installation script will offer to execute `root.sh` as root user.
 
 Switch to root and execute `root.sh`. It will create `postgresql-<alias>` unit file in /etc/systemd/system for systemctl daemon. Cluster will be started with systemctl and in-cluster actions will be executed.
 
@@ -351,6 +437,51 @@ vi parameters_cls1.conf
 # Then execute as postgres
 pgoperate --create-cluster --alias cls1
 ```
+
+
+
+## add_cluster.sh
+---
+
+In situations when there is already a running cluster which you want to use with pgOperate, add_cluster-sh can be used to create PGSQL_BASE directory and parameters file for your cluster.
+
+Logs of the **add_cluster.sh** will be saved into $PGOPERATE_BASE/log folder.
+
+Arguments:
+```
+              -a|--alias <alias_name> -  Alias name of the running cluster to be added.
+              -s|--silent             -  Silent mode.
+
+              Parameters for silent mode:
+                 -b|--base                   - (Mandatory) Base directory name
+                 -s|--superuser <username>   - (Optional) Cluster superuser. Default is postgres.
+                 -w|--password               - (Optional) Superuser password.
+                 -l|--backup-dir <dirname>   - (Optional) Directory for backups. Default is /u00/app/pgsql/test/pgd11/backup
+                 -c|--arch-dir <dirname>     - (Optional) Directory for archived logs. Default is /u00/app/pgsql/test/pgd11/arch
+                 -k|--start-script           - (Optional) Script to start Cluster.
+                 -n|--stop-script            - (Optional) Script to stop Cluster.
+```
+
+Alias name of the cluster to be added must be provided.
+
+Parameters file for this alias will be created in `$PGOPERATE_BASE/etc`.
+
+The `$PGSQL_BASE` directory will be created. All subdirectories will be created or symbolic links will be added.
+
+Script must be executed as postgres user.
+
+At the end of installation script will offer to execute `root.sh` as root user.
+
+Switch to the root user and execute `root.sh` if you want. It will create `postgresql-<alias>` unit file in /etc/systemd/system for systemctl daemon.
+
+
+Example for cluster with alias cls1:
+
+```
+pgoperate --add-cluster --alias sales --silent --base /u00/app/pgsql/clusters
+```
+
+
 
 
 

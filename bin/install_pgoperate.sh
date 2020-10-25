@@ -68,14 +68,17 @@ tar -xvf $TARFILE -C $TVDBASE
 [[ $? -gt 0 ]] && echo "ERROR: Cannot continue! Check the output and fix issue." && exit 1 || echo "SUCCESS"
 
 echo -e "\n>>> INSTALLATION STEP: Add aliases to \$PGBASENV_BASE/etc/pgbasenv_standard.conf.\n"
+sed -i "/# pgOperate/d" $PGBASENV_BASE/etc/pgbasenv_standard.conf
+sed -i "/alias pgoperate=.*/d" $PGBASENV_BASE/etc/pgbasenv_standard.conf
+sed -i "/alias cdbase=.*/d" $PGBASENV_BASE/etc/pgbasenv_standard.conf
 echo "
 # pgOperate
 alias pgoperate=\"\$PGOPERATE_BASE/bin/pgoperate\"
 alias cdbase='eval \"cd \$(test -f \$PGOPERATE_BASE/etc/parameters_\${PGBASENV_ALIAS}.conf && grep \"^PGSQL_BASE\" \$PGOPERATE_BASE/etc/parameters_\${PGBASENV_ALIAS}.conf | cut -d\"=\" -f2 || echo \".\")\"'
 " >> $PGBASENV_BASE/etc/pgbasenv_standard.conf
 
-echo -e "\n>>> INSTALLATION STEP: Update \$PGBASENV_BASE/bin/root.sh with current username.\n"
-sed -i "s/PG_SUPERUSER=.*/PG_SUPERUSER=$(id -un)/g" $PGBASENV_BASE/bin/root.sh
+echo -e "\n>>> INSTALLATION STEP: Update \$PGOPERATE_BASE/bin/root.sh with current username.\n"
+sed -i "s/PG_SUPERUSER=.*/PG_SUPERUSER=$(id -un)/g" $PGOPERATE_BASE/bin/root.sh
 
 echo -e "\nInstallation successfully completed."
 
