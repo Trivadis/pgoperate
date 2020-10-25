@@ -474,6 +474,9 @@ At the end of installation script will offer to execute `root.sh` as root user.
 
 Switch to the root user and execute `root.sh` if you want. It will create `postgresql-<alias>` unit file in /etc/systemd/system for systemctl daemon.
 
+If you already use some other systemctl unit file or some other way to control your PostgreSQL instance, then use `--start-script` and `--stop-script` parameters to specify custom scripts to control the instance.
+
+These two parameters will set `PG_START_SCRIPT` and `PG_STOP_SCRIPT` in `parameters-<alias>.conf` file. You can set them also later.
 
 Example for cluster with alias cls1:
 
