@@ -91,6 +91,50 @@ Start old primary as new standby:
 node1 $ pgoperate --reinstate -m node2 -f
 ```
 
+### Check the cluster
+
+Execute `pgoperate --check` to check the main metrics of the cluster.
+
+```
+$ pgoperate --check
+
+Current cluster: sales
+Executing check PG_CHECK_DEAD_ROWS
+
+SUCCESS: From check PG_CHECK_DEAD_ROWS: The autovacuum process is enabled and there are no tables with critical count of dead rows.
+
+Executing check PG_CHECK_FSPACE
+
+SUCCESS: From check PG_CHECK_FSPACE: The mount point / on which cluster data directory resides is 5% used. Threshold is 90%.
+
+Executing check PG_CHECK_LOGFILES
+
+SUCCESS: From check PG_CHECK_LOGFILES: There are no messages matching the search pattern ERROR|FATAL|PANIC in logfiles.
+
+Executing check PG_CHECK_MAX_CONNECT
+
+SUCCESS: From check PG_CHECK_MAX_CONNECT: Number of connections 6 is in range. Threshold value 87. Maximum allowed non-superuser is 97.
+
+Executing check PG_CHECK_STDBY_AP_DELAY_MB
+
+SUCCESS: From check PG_CHECK_STDBY_AP_DELAY_MB: Not a standby database.
+
+Executing check PG_CHECK_STDBY_AP_LAG_MIN
+
+SUCCESS: From check PG_CHECK_STDBY_AP_LAG_MIN: Not a standby database.
+
+Executing check PG_CHECK_STDBY_STATUS
+
+SUCCESS: From check PG_CHECK_STDBY_STATUS: Not a standby database.
+
+Executing check PG_CHECK_STDBY_TR_DELAY_MB
+
+SUCCESS: From check PG_CHECK_STDBY_TR_DELAY_MB: Not a standby database.
+
+Executing check PG_CHECK_WAL_COUNT
+
+SUCCESS: From check PG_CHECK_WAL_COUNT: WAL files count is 5, the current WAL size 80MB not exceed max_wal_size 1024MB more than 20% threshold.
+```
 
 
 
