@@ -304,6 +304,91 @@ In case of archive log mode, WAL files will be archived to **backup** sub-folder
 
 
 
+## If you want to upgrade PostgreSQL
+
+Example of upgrade from version 11 to version 12.
+
+First PostgreSQL version 12 must be installed. Lets say that pgBasEnv alias of the 12 home is pgh121. 
+
+Cluster alias is tt1.
+
+With pgBasEnv we can set cluster alias and non-default home alias.
+
+Set tt1 cluster env and pgh121 as home:
+```
+$ tt1 pgh121
+```
+
+Go to base directory:
+```
+cd $PGSQL_BASE
+```
+
+We will create new empty directory to initialize 12 data directory.
+```
+mkdir data_new
+```
+
+Initialize new 12 data directory:
+```
+initdb -D $PGSQL_BASE/data_new
+```
+
+Now stop the cluster:
+```
+sudo systemctl stop postgresql-tt1
+```
+
+Now set variables and execute upgrade:
+```
+export PGDATAOLD=$PGSQL_BASE/data
+export PGDATANEW=$PGSQL_BASE/data_new
+export PGBINOLD=/usr/pgsql-11/bin
+export PGBINNEW=/usr/pgsql-12/bin
+pg_upgrade --old-port=$PGPORT --new-port=$PGPORT --old-options="--config_file=$PGSQL_BASE/etc/postgresql.conf" --new-options="--config_file=$PGSQL_BASE/etc/postgresql.conf"
+```
+
+After the upgrade, rename controlfile in old home. It will prevent the cluster from start and to be detected by pgBasEnv:
+```
+mv $PGSQL_BASE/data/global/pg_control $PGSQL_BASE/data/global/pg_control.old
+```
+
+Now replace directories:
+```
+mv $PGSQL_BASE/data $PGSQL_BASE/data_old
+mv $PGSQL_BASE/data_new $PGSQL_BASE/data
+```
+
+Modify pgclustertab to set new 12 home for tt1 and port if not set:
+```
+vi $PGBASENV_BASE/etc/pgclustertab
+```
+
+Now reset environment:
+```
+tt1
+```
+
+Execute generate_unitfile.sh:
+```
+$PGOPERATE_BASE/bin/generate_unitfile.sh
+...
+INFO: Execute as root /u00/app/pgsql/tt1/scripts/update_unitfile.sh.
+```
+
+Switch to root and execute update_unitfile.sh to generate new unit file.
+```
+/u00/app/pgsql/tt1/scripts/update_unitfile.sh
+```
+
+Now we can start upgraded 12 cluster:
+```
+systemctl start postgresql-tt1
+```
+
+
+
+
 
 
 ## About parameters_\<alias\>.conf
