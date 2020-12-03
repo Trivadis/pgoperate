@@ -36,6 +36,7 @@ Available options:
   --promote                Promote Slave cluster to Master
   --reinstate              Convert old Master to Slave and start streaming replication
   --prepare-master         Prepare PostgreSQL Cluster for Master role
+  --switchover             Switchover to standby site.
   
   For each option you can get help by adding \"help\" keyword after the argument, like:
     pgoperate --backup help
@@ -88,6 +89,10 @@ case $1 in
   --create-slave) shift
             $PGOPERATE_BASE/bin/create_slave.sh "$@"
             ;;  
+
+  --switchover) shift
+            $PGOPERATE_BASE/bin/switchover.sh "$@"
+            ;;
 
   --help|-h) help
             ;;  

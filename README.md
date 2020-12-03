@@ -91,6 +91,20 @@ Start old primary as new standby:
 node1 $ pgoperate --reinstate -m node2 -f
 ```
 
+
+### Switchover to standby
+
+With pgOperate it is very easy to switchover to standby.
+
+`pgoperate --switchover` can be executed from master and standby sites. Passwordless ssh connection must be preconfigured.
+
+Execute as postgres user:
+
+```
+pgoperate --switchover
+``` 
+
+
 ### Check the cluster
 
 Execute `pgoperate --check` to check the main metrics of the cluster.
@@ -150,6 +164,7 @@ SUCCESS: From check PG_CHECK_WAL_COUNT: WAL files count is 5, the current WAL si
 | **create_slave.sh**     | Creates standby cluster.                                               |
 | **promote.sh**          | Promotes standby to master.                                            |
 | **reinstate.sh**        | Starts old master as new standby.                                      |
+| **switchover.sh**       | Automatic switchover to standby site.                                  |
 | **backup.sh**           | Backs up PostgreSQL cluster.                                             |
 | **restore.sh**          | Restore PostgreSQL cluster.                                            |
 | **check.sh**            | Executes different monitoring checks.                                  |
@@ -197,6 +212,7 @@ $PGOPERATE_BASE ┐
                 │        ├── create_slave.sh
                 │        ├── promote.sh
                 │        ├── reinstate.sh
+                │        ├── switchover.sh
                 │        ├── backup.sh
                 │        ├── restore.sh
                 │        ├── check.sh
@@ -512,6 +528,7 @@ Available options:
   --promote                Promote Slave cluster to Master
   --reinstate              Convert old Master to Slave and start streaming replication
   --prepare-master         Prepare PostgreSQL Cluster for Master role
+  --switchover             Switchover to standby site.
 
   For each option you can get help by adding "help" keyword after the argument, like:
     pgoperate --backup help
@@ -780,7 +797,29 @@ pgoperate --reinstate -f
 ```
 
 
+## switchover.sh
+---
 
+With this script you can perform fully automatic switchover to standby.
+
+Script can be executed on master or standby site.
+
+If it will be executed on standby site, then script will identify master and execute on master site.
+
+If there is more than one standby configured then following rules will be used:
+1. If there is synchronous standby configured, then it will be used.
+2. Asynchronous standbys will be sorted by lag, the standby with smallest lag will be used.
+
+Available options:
+```
+    `-f`            Force to recreate new standby from scratch if old master will not be able to sync with new master.
+                    Check the help of the reinstate.sh script.
+```
+
+Execute as postgres:
+```
+pgoperate --switchover
+```
 
 
 
