@@ -74,19 +74,14 @@ Then create standby cluster:
 node2 $ pgoperate --create-slave --master node1
 ```
 
-### Do a switch-over
-
-Stop the master on node1:
-```
-node1 $ sudo systemctl stop postgresql-sales
-```
+### Failover to standby 
 
 Promote standby to master on node2:
 ```
 node2 $ pgoperate --promote
 ```
 
-Start old primary as new standby:
+When old primary is reachable again, reinstate as new standby:
 ```
 node1 $ pgoperate --reinstate -m node2 -f
 ```
