@@ -1,5 +1,6 @@
-
+SET_CONF_PARAM_IN_CLUSTER=YES
 _IS_ROOT="$(id -u)"
+
 
 prepare_logdir() {
   mkdir -p $PGSQL_BASE/log/tools
@@ -87,7 +88,6 @@ modifyFile() {
   return 0
 }
 
-
 set_conf_param() {
 local config="$1"
 local param="$2"
@@ -100,10 +100,12 @@ else
   modifyFile $config add "$param = $value\t\t# Added by PgOperate"
 fi
 
-if [[ $config =~ postgresql.conf ]]; then
-  value="${value//\\&/&}"
-  $TVD_PGHOME/bin/psql -U $PG_SUPERUSER -d postgres -c "alter system set ${param}=${value}" -t > /dev/null 2>&1
-  $TVD_PGHOME/bin/psql -U $PG_SUPERUSER -d postgres -c "select pg_reload_conf()" -t > /dev/null 2>&1
+if [[ $SET_CONF_PARAM_IN_CLUSTER == "YES" ]]; then
+  if [[ $config =~ postgresql.conf ]]; then
+    value="${value//\\&/&}"
+    $TVD_PGHOME/bin/psql -U $PG_SUPERUSER -d postgres -c "alter system set ${param}=${value}" -t > /dev/null 2>&1
+    $TVD_PGHOME/bin/psql -U $PG_SUPERUSER -d postgres -c "select pg_reload_conf()" -t > /dev/null 2>&1
+  fi
 fi
 
 }

@@ -187,6 +187,8 @@ printheader "Updating pg_hba.conf"
 update_pg_hba
 
 printheader "Updating parameters in postgresql.conf"
+export PGPORT=1
+export SET_CONF_PARAM_IN_CLUSTER=NO
 update_db_params
 
 printheader "Manually testing new cluster"
