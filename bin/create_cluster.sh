@@ -81,7 +81,12 @@ adding_entry_in_pgtab() {
   echo "$PGSQL_BASE/data;$(cat $PGSQL_BASE/data/PG_VERSION);$TVD_PGHOME;$PG_PORT;$PG_CLUSTER_ALIAS" >> $PGBASENV_BASE/etc/pgclustertab
 }
 
-
+minimize_conf_file() {
+  if [[ "$MINIMIZE_CONF_FILE" =~ yes|YES ]]; then
+    sed -i '/^[ |\t]*#/d' $1
+    sed -i '/^$/d' $1
+  fi
+}
 
 
 
@@ -190,6 +195,7 @@ printheader "Updating parameters in postgresql.conf"
 export PGPORT=1
 export SET_CONF_PARAM_IN_CLUSTER=NO
 update_db_params
+minimize_conf_file $PGSQL_BASE/etc/postgresql.conf
 
 printheader "Manually testing new cluster"
 manual_start_stop

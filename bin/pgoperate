@@ -25,7 +25,9 @@ function help() {
 
 Available options:
 
-  --version                Show version.  
+  --version                Show version. 
+  --stop		   Stop current cluster. If PG_STOP_SCRIPT set, then it will executed else sudo systemctl will be used.
+  --start		   Start current cluster. If PG_START_SCRIPT set, then it will executed else sudo systemctl will be used.
   --create-cluster         Create new PostgreSQL Cluster
   --add-cluster            Add existing cluster to pgOperate environment
   --remove-cluster         Removes PostgreSQL Cluster
@@ -93,6 +95,39 @@ case $1 in
   --switchover) shift
             $PGOPERATE_BASE/bin/switchover.sh "$@"
             ;;
+
+  --stop) shift
+            [[ -z ${PGBASENV_ALIAS} ]] && echo "Set env for the cluster first." && exit 1
+            if [[ -f $PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf ]]; then
+               source $PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf
+            fi
+            if [[ -z $PG_STOP_SCRIPT ]]; then
+               sudo systemctl stop postgresql-${PGBASENV_ALIAS}
+               RC=$?
+            else
+               $PG_STOP_SCRIPT
+               RC=$?
+            fi
+            [[ $RC -eq 0 ]] && echo "Succesfully executed" || echo "Execution failed"
+            exit $RC
+            ;;
+
+  --start) shift
+            [[ -z ${PGBASENV_ALIAS} ]] && echo "Set env for the cluster first." && exit 1
+            if [[ -f $PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf ]]; then
+               source $PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf
+            fi 
+            if [[ -z $PG_START_SCRIPT ]]; then
+               sudo systemctl start postgresql-${PGBASENV_ALIAS}
+               RC=$?
+            else
+               $PG_START_SCRIPT
+               RC=$?
+            fi
+            [[ $RC -eq 0 ]] && echo "Succesfully executed" || echo "Execution failed"
+            exit $RC
+            ;;
+  
 
   --help|-h) help
             ;;  

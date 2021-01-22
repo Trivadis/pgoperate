@@ -63,6 +63,11 @@ log_rotation_age = 1d
 log_rotation_size = 0
 "
 
+
+# Minimize postgresql.conf file. Al commented parameters will be removed.
+MINIMIZE_CONF_FILE=no
+
+
 # The absolute path to scripts to start and stop the cluster. Use it if cluster is not controlled by the default systemctl service postgresql-<alias>.serivce.
 PG_START_SCRIPT=
 PG_STOP_SCRIPT=

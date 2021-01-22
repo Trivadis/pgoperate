@@ -434,6 +434,7 @@ Parameters:
 | **SERVER_CERT**           |                                          | File with SSL server certificate. Usually called server.crt.                 |
 | **SERVER_KEY**            |                                          | File with SSL server private key. Usually called server.key.                 |
 | **PG_DEF_PARAMS**         | Default value is below                   | String variable which includes the init parameters separated by new line. These parameters will be set in postgresql.conf during installation. If `shared_buffers` will be set here, then it will be overridden by `PCTMEM` if defined. If `PCTMEM` is null then absolute value will be set. |
+| **MINIMIZE_CONF_FILE**       | `no`                     | If set to "yes" then all commented parameters will be removed from postgresql.conf          |
 | **PG_START_SCRIPT**       |                      | Custom script to start the cluster. If defined, then it will be used to start the cluster.                                             |
 | **PG_STOP_SCRIPT**       |                      | Custom script to stop the cluster. If defined, then it will be used to stop the cluster.                                             |
 | **BACKUP_LOCATION**       | `$PGSQL_BASE/backup`                     | Directory to store backup files.                                             |
