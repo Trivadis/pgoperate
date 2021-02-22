@@ -30,7 +30,7 @@ vi parameters_sales.conf
 pgoperate --create-cluster --alias sales
 ```
 
-### Make a backup
+### Take a backup
 
 ```
 pgoperate --backup
@@ -148,7 +148,7 @@ SUCCESS: From check PG_CHECK_WAL_COUNT: WAL files count is 5, the current WAL si
 
 
 
-## Installation and upgare
+## Installation and upgrade
 
 To install pgOperate you need installer script `install_pgoperate.sh` and tar file with current version.
 
@@ -172,7 +172,7 @@ After installation execute `root.sh` as root.
 
 It will register and start `pgoperated-<postgres owner>` service.
 
-File `01_<postgres owner>` file into `/etc/sudoers.d` to allow `postgres owner` user to `start/stop/status/reload` the `pgoperated-<postgres owner>` service with sudo privileges.
+File `01_<postgres owner>` will be created in `/etc/sudoers.d` to allow `postgres owner` user to `start/stop/status/reload` the `pgoperated-<postgres owner>` service with sudo privileges.
 
 To upgrade to the new version, just download bundle directory and execute `install_pgoperate.sh`. It will not overwrite user
 specific files.

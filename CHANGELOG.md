@@ -1,7 +1,7 @@
 
 ## 1.9
 
-*   Version 1.9 brings new high availability solution for the clusters managed by pgOperate. Usualy each postgresql instance has its own associated systemd unit file, which controls its availability. The `PGPORT` and `PGDATA` parameters are hard coded into it. Adding or removing the clusters require corresponding actions on root side. PgOperate will use its own daemon process `pgoperated` which will run under postgres owner user. It will have its assosiated systemd service file to survive host restarts, this systemd service will be set only one time with root.sh. Daemon will hen control and provide high availability to all postgres cluster. In parameters.conf file of each cluster you can set inteded state of it, should it be `UP` or `DOWN`. For more details check "High availability" section in README.md file.
+*   Version 1.9 brings new high availability solution for the clusters managed by pgOperate. Usualy each postgresql instance has its own associated systemd unit file, which controls its availability. The `PGPORT` and `PGDATA` parameters are hard coded into it. Adding or removing the clusters require corresponding actions on root side. PgOperate will use its own daemon process `pgoperated` which will run under postgres owner user. It will have its assosiated systemd service file to survive host restarts, this systemd service will be set only one time with root.sh. Daemon will then control and provide high availability to all postgres clusters. In parameters.conf file of each cluster you can set inteded state of it, should it be `UP` or `DOWN`. For more details check "High availability" section in README.md file.
 
 To upgrate to this version, next steps must be followed:
 
