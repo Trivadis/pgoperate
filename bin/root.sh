@@ -21,23 +21,72 @@
 
 # Executes root related action.
 
+PGOPERATE_BASE=/var/lib/pgsql/tvdtoolbox/pgoperate
+USER=postgres
+GROUP=postgres
 
-PG_SUPERUSER=postgres
+create_service_file() {
+if [[ $_IS_ROOT -ne 0 ]]; then 
+   echo "WARNING: Must be root to create service file for systemd."
+   return 1
+fi
+
+local service_file=$1
+local user=$2
+local group=$3
+echo "
+[Unit]
+Description=pgOperate deamon process
+Documentation=https://github.com/Trivadis/pgoperate
+After=network.target
+
+[Service]
+Type=forking
+User=${user}
+Group=${group}
+LimitNOFILE=infinity
+LimitNPROC=infinity
+LimitCORE=infinity
+Environment=PGOPERATE_BASE=${PGOPERATE_BASE}
+PIDFile=${PGOPERATE_BASE}/bin/pgoperate-deamon.pid
+Restart=on-failure
+TimeoutSec=300
+
+ExecStart=${PGOPERATE_BASE}/bin/pgoperated start
+ExecStop=${PGOPERATE_BASE}/bin/pgoperated kill
+ExecReload=${PGOPERATE_BASE}/bin/pgoperated reload
+
+[Install]
+WantedBy=multi-user.target
+
+" > /etc/systemd/system/$service_file
+
+systemctl daemon-reload
+systemctl enable $service_file
+systemctl start $service_file
+systemctl status $service_file --plain --no-pager
+}
+
 
 add_sudoers_rules() {
 
 echo "
-$PG_SUPERUSER ALL= NOPASSWD: /bin/systemctl start postgresql*
-$PG_SUPERUSER ALL= NOPASSWD: /bin/systemctl stop postgresql*
-$PG_SUPERUSER ALL= NOPASSWD: /bin/systemctl status postgresql*
-$PG_SUPERUSER ALL= NOPASSWD: /bin/systemctl reload postgresql*
-" > /etc/sudoers.d/01_postgres
+$USER ALL= NOPASSWD: /bin/systemctl start pgoperated-$USER.service
+$USER ALL= NOPASSWD: /bin/systemctl stop pgoperated-$USER.service
+$USER ALL= NOPASSWD: /bin/systemctl status pgoperated-$USER.service
+$USER ALL= NOPASSWD: /bin/systemctl reload pgoperated-$USER.service
+" > /etc/sudoers.d/01_$USER
 
-echo "Now user $PG_SUPERUSER can use sudo to start/stop postgresql using systemctl."
+echo "Now user $USER can use sudo to start/stop pgoperated-$USER.service using systemctl."
 
 }
 
 
+# If SELinux
+semanage fcontext -a -t bin_t "$PGOPERATE_BASE/bin(/.*)?" > /dev/null 2>&1
+restorecon -r -v $PGOPERATE_BASE/bin > /dev/null 2>&1
+
+create_service_file "pgoperated-$USER.service" $USER $GROUP
 add_sudoers_rules
 
 echo "Done"

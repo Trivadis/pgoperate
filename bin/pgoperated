@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+
+# Copyright 2020 Trivadis AG <info@trivadis.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+#  Created on 02.2021 by Aychin Gasimov
+#
+# Change log:
+#   01.02.2021: Aychin: Initial version created
+
+
+
+help() {
+
+echo "
+PgOperate daemon controlling utility. Daemon process pgoperated monitors the configuration parameters of the 
+registered clusters and tries to keep postgres instaces aligned to their intended states.
+If AUTOSTART parameter is set to YES in cluster parameters.conf file, then pgoperated will control it.
+Intended state can be defined by parameter INTENDED_STATE in parameters.conf file. It can be set to UP or DOWN.
+The script registers the service pgoperated-$(id -nu).serivce with systemd. This service will control availability
+of the pgoperated and pgoperated will control the availability of the postgesql instances.
+
+WARNING: pgoperated should be controlled by pgoperated-$(id -nu).serivce, which will execute this utility to control it.
+         Commands like 'start' and 'kill' will be executed from systemd service.
+
+To start or stop individual instances and update their INTENDED_STATE accordingly use pgopereate --stop and --start.
+
+It is safe to execute 'reload' option, which will call pg_ctl reload on all running instances.
+
+                    start -  Start pgoperated daemon process.
+                     kill -  Send SIGTERM to the pgoperated to stop the daemon.
+                   reload -  Will all pg_ctl reload on all running postgres instances.
+
+"
+}
+
+PID_FILE=$PGOPERATE_BASE/bin/pgoperate-deamon.pid
+LOG_FILE=$PGOPERATE_BASE/log/pgoperate-deamon.log
+
+
+if [[ $1 == "kill" ]]; then
+# Send SIGTERM to the pgoperated daemon
+   kill $(cat $PID_FILE)
+   RC=$?
+   [[ $RC -eq 0 ]] && rm -f $PID_FILE > /dev/null 2>&1
+
+
+
+
+elif [[ $1 == "start" ]]; then
+# Start pgoperated
+
+if [[ -f $PID_FILE ]]; then
+  # Check if daemon running
+  ps -p $(cat $PID_FILE) -o args= | grep -q pgoperated
+  RC=$?
+  if [[ $RC -eq 0 ]]; then
+    echo "PID File $PID_FILE exists. Daemon running."
+    exit 1
+  else
+    echo "PID File $PID_FILE exists. No daemon process running. Stale pid file. Removing."
+    rm -f $PID_FILE
+  fi
+fi
+
+(
+  [[ -t 0 ]] && exec </dev/null
+  [[ -t 1 ]] && exec >/dev/null
+  [[ -t 2 ]] && exec 2>/dev/null
+
+  rm_PID_FILE(){
+     rm -f $PID_FILE > /dev/null 2>&1
+     exit 0
+  }  
+
+  trap '' SIGHUP SIGINT
+  trap rm_PID_FILE SIGTERM
+  trap rm_PID_FILE EXIT
+  
+  source $HOME/.pgbasenv_profile
+  while true; do
+    unset clustertab
+    clustertab="$(pgup --list)"
+    while read pfile; do
+      pfile_base=$(basename $pfile) && pfile_base=${pfile_base//parameters_/}
+      ALIAS=${pfile_base//.conf/}
+      PIPE_FILE=/tmp/.pgoperate.${ALIAS}
+      tab=$(echo "$clustertab" | grep "^${ALIAS};")
+    (
+      if [[ ! -z $tab ]]; then
+        PGPORT=$(echo $tab | cut -d";" -f4)
+        PGDATA=$(echo $tab | cut -d";" -f7)
+        BINHOME=$(echo $tab | cut -d";" -f9)
+        STATUS=$(echo $tab | cut -d";" -f3)
+        source $PGOPERATE_BASE/etc/parameters_${ALIAS}.conf
+        [[ -z $PGPORT ]] && PGPORT=$PG_PORT
+        if [[ $AUTOSTART == "YES" ]]; then
+          if [[ $INTENDED_STATE == "UP" && $STATUS == "DOWN" ]]; then
+            if [[ -z $PG_START_SCRIPT ]]; then
+              $BINHOME/bin/pg_ctl start -D ${PGDATA} -l $PGSQL_BASE/log/server.log -s -o "-p ${PGPORT} --config_file=$PGSQL_BASE/etc/postgresql.conf $ADDITIONAL_START_OPTIONS" -w -t 300
+              RC=$?
+            else
+              $PG_START_SCRIPT
+              RC=$?
+            fi
+            if [[ $RC -eq 0 ]]; then
+              echo "$(date): Cluster ${ALIAS} successfully started." >> $LOG_FILE
+              [[ -p $PIPE_FILE ]] && echo "SUCCESS" >$PIPE_FILE
+            else
+              echo "$(date): Cluster ${ALIAS} startup failed." >> $LOG_FILE
+              [[ -p $PIPE_FILE ]] && echo "FAIL" >$PIPE_FILE
+            fi
+          elif [[ $INTENDED_STATE == "DOWN" && $STATUS == "UP" ]]; then
+            if [[ -z $PG_STOP_SCRIPT ]]; then
+              $BINHOME/bin/pg_ctl stop -D ${PGDATA} -s -m fast
+              RC=$?
+            else
+              $PG_STOP_SCRIPT
+              RC=$?
+            fi
+            if [[ $RC -eq 0 ]]; then
+              echo "$(date): Cluster ${ALIAS} successfully stopped." >> $LOG_FILE
+              [[ -p $PIPE_FILE ]] && echo "SUCCESS" >$PIPE_FILE
+            else
+              echo "$(date): Cluster ${ALIAS} stop failed." >> $LOG_FILE
+              [[ -p $PIPE_FILE ]] && echo "FAIL" >$PIPE_FILE
+            fi
+          else
+            [[ -p $PIPE_FILE ]] && echo "NOACTION" >$PIPE_FILE
+          fi
+        fi
+      fi
+    ) &
+
+    wait $!
+
+      unset ALIAS pfile pfile_base tab
+    done < <(ls -1 $PGOPERATE_BASE/etc/parameters_*.conf)
+    
+    trap 'continue' SIGUSR1
+    sleep 15 & wait $!
+  done
+) &
+
+PID=$!
+echo "$PID" > $PID_FILE 
+
+
+elif [[ $1 == "reload" ]]; then
+# Call pg_ctl reload on all running PostgreSQL instances.
+  
+  source $HOME/.pgbasenv_profile
+  while read pfile; do
+      pfile_base=$(basename $pfile) && pfile_base=${pfile_base//parameters_/}
+      ALIAS=${pfile_base//.conf/}
+      tab=$(echo "$clustertab" | grep "^${ALIAS};")
+      if [[ ! -z $tab ]]; then
+        PGDATA=$(echo $tab | cut -d";" -f7)
+        BINHOME=$(echo $tab | cut -d";" -f9)
+        STATUS=$(echo $tab | cut -d";" -f3)
+        if [[ $STATUS == "UP" ]]; then
+            $BINHOME/bin/pg_ctl reload -D ${PGDATA} -s
+            RC=$?
+            if [[ $RC -eq 0 ]]; then
+              echo "$(date): Cluster ${ALIAS} successfully reloaded." >> $LOG_FILE
+            else
+              echo "$(date): Cluster ${ALIAS} reload failed." >> $LOG_FILE
+            fi
+        fi
+      fi
+  done < <(ls -1 $PGOPERATE_BASE/etc/parameters_*.conf)
+
+else
+  help 
+
+fi
+
+exit 0

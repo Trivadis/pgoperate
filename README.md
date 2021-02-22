@@ -1,8 +1,9 @@
 # pgOperate -  Tool Set to operate PostgreSQL Clusters
 ---
 
-pgOperate is a tool that simplifies the operation of Community PostgreSQL cluster (versions 9.6+).
+pgOperate is a tool that simplifies the operation of Community PostgreSQL clusters (versions 9.6+).
 
+Check the [Change Log](CHANGELOG.md) for new features and changes introduced in new versions of the tool.
 
 ## Prerequisites
 
@@ -147,6 +148,39 @@ SUCCESS: From check PG_CHECK_WAL_COUNT: WAL files count is 5, the current WAL si
 
 
 
+## Installation and upgare
+
+To install pgOperate you need installer script `install_pgoperate.sh` and tar file with current version.
+
+Both files can be downloaded from directory `bundle`.
+
+Download both files on some location on the destination host and execute:
+
+```
+cd /var/lib/pgsql/bundle
+./install_pgoperate.sh
+
+...
+Installation successfully completed.
+
+Now execute /var/lib/pgsql/tvdtoolbox/pgoperate/bin/root.sh as root user.
+```
+
+PgOperate will be installed into `$TVDBASE/pgoperate` directory.
+
+After installation execute `root.sh` as root. 
+
+It will register and start `pgoperated-<postgres owner>` service.
+
+File `01_<postgres owner>` file into `/etc/sudoers.d` to allow `postgres owner` user to `start/stop/status/reload` the `pgoperated-<postgres owner>` service with sudo privileges.
+
+To upgrade to the new version, just download bundle directory and execute `install_pgoperate.sh`. It will not overwrite user
+specific files.
+
+If there will be special installation notes, they will be described in [Change Log](CHANGELOG.md).
+
+
+
 
 ## PostgreSQL cluster management scripts developed to automate regular tasks.
 
@@ -163,6 +197,9 @@ SUCCESS: From check PG_CHECK_WAL_COUNT: WAL files count is 5, the current WAL si
 | **backup.sh**           | Backs up PostgreSQL cluster.                                             |
 | **restore.sh**          | Restore PostgreSQL cluster.                                            |
 | **check.sh**            | Executes different monitoring checks.                                  |
+| **pgoperated**          | The main daemon script of the pgOperate.                               |
+| **control.sh**          | The script to communicate ith daemon process to start/stop the cluster.|
+
 
 
 ## Libraries
@@ -212,6 +249,7 @@ $PGOPERATE_BASE ┐
                 │        ├── restore.sh
                 │        ├── check.sh
                 │        ├── root.sh
+                │        ├── ...
                 │        ├── install_pgoperate.sh
                 │        ├── bundle.sh       
                 │        └── VERSION
@@ -221,7 +259,10 @@ $PGOPERATE_BASE ┐
                 │        ├── parameters_<alias>.conf        
                 │        └── ...
                 │
-                ├─── log
+                ├─── log ┐
+                │        ├── pgoperate-deamon.log
+                │        ├── create_cluster.sh_YYYYMMDD_HHMMSS.log        
+                │        └── ...
                 │
                 ├─── lib ┐
                 │        ├── check.lib
@@ -230,11 +271,11 @@ $PGOPERATE_BASE ┐
                 └─── bundle ┐
                             ├── install_pgoperate.sh
                             └── pgoperate-<version>.tar
-````
+```
 
-Each installation will have its own single parameters file. The format of the parameter filename is important, it must be `parameters_<alias>.conf`. Where `alias` is the pgBasEnv alias of the PostgreSQL cluster. It will be used to set its environment.
+Each installation will have its own single parameters file. The name format of the parameter filename is important, it must be `parameters_<alias>.conf`. Where `alias` is the pgBasEnv alias of the PostgreSQL cluster. It will be used to set its environment.
 
-The parameter file includes all parameters required for cluster creation, backup, replication and monitoring. Everything in one place. All pgOperate scripts will use this parameter file for the current alias to get required values. It is our single point of truth.
+The parameter file includes all parameters required for cluster creation, backup, replication, monitoring and high availability. Everything in one place. All pgOperate scripts will use this parameter file for the current alias to get required values. It is our single point of truth.
 
 The location of the cluster base directory `PGSQL_BASE` will be defined in the clusters `parameters_<alias>.conf` file as well.
 
@@ -274,7 +315,7 @@ $PGSQL_BASE ┐
 
 #### scripts
 
-It will contain scripts related to current cluster.
+Contains scripts related to current cluster.
 
 `root.sh` - Must be executed as root user after cluster creation. It will register `postgresql-<alias>` unit by systemctl daemon and finalize cluster creation.
 
@@ -335,7 +376,7 @@ Go to base directory:
 cd $PGSQL_BASE
 ```
 
-We will create new empty directory to initialize 12 data directory.
+We will create new empty directory to initialize 12 cluster.
 ```
 mkdir data_new
 ```
@@ -347,7 +388,7 @@ initdb -D $PGSQL_BASE/data_new
 
 Now stop the cluster:
 ```
-sudo systemctl stop postgresql-tt1
+pgoperate --stop
 ```
 
 Now set variables and execute upgrade:
@@ -359,7 +400,7 @@ export PGBINNEW=/usr/pgsql-12/bin
 pg_upgrade --old-port=$PGPORT --new-port=$PGPORT --old-options="--config_file=$PGSQL_BASE/etc/postgresql.conf" --new-options="--config_file=$PGSQL_BASE/etc/postgresql.conf"
 ```
 
-After the upgrade, rename controlfile in old home. It will prevent the cluster from start and to be detected by pgBasEnv:
+After the upgrade, rename controlfile in old home. It will prevent the cluster from startup and to be detected by pgBasEnv:
 ```
 mv $PGSQL_BASE/data/global/pg_control $PGSQL_BASE/data/global/pg_control.old
 ```
@@ -380,24 +421,43 @@ Now reset environment:
 tt1
 ```
 
-Execute generate_unitfile.sh:
+Start upgraded 12 cluster:
 ```
-$PGOPERATE_BASE/bin/generate_unitfile.sh
-...
-INFO: Execute as root /u00/app/pgsql/tt1/scripts/update_unitfile.sh.
-```
-
-Switch to root and execute update_unitfile.sh to generate new unit file.
-```
-/u00/app/pgsql/tt1/scripts/update_unitfile.sh
-```
-
-Now we can start upgraded 12 cluster:
-```
-systemctl start postgresql-tt1
+pgoperate --start
 ```
 
 
+
+
+## High availability
+
+To ensure the high availability of the clusters and minimize root privileged actions, pgOperate will use its own daemon process.
+
+pgOperate daemon process `pgoperated` will run under postgres owner user. It will monitor all clusters registered with pgOperate.
+
+There will be one systemd service `pgoperated-$user.service`, where $user is the postgres installation owner. This service will control
+pgoperated daemon, which in his turn will control all postgresql instances.
+
+If postgresql was installed under **postgres** user:
+```
+  ┌────────────────────────────────┐  ┌────────────────────────────────────────┐
+  │ root                           │  │ postgres                               │
+  │                                │  │                 ┌───> pg01 cluster     │
+  │  pgoperated-postgres.service  ──────> pgoperated ───┼───> pg02 cluster     │
+  │                                │  │                 └───> pg03 cluster     │
+  │                                │  │                                        │
+  └────────────────────────────────┘  └────────────────────────────────────────┘
+
+```
+
+This setup makes it possible to restore state of each particular instance after server crash or restart, as well as be flexible in adding new postgres clusters to configuration or removing existing ones. It is also possible to change cluster port or data directory without the need to update systemd serivce files. 
+
+Daemon process `pgoperated` will monitor the configuration parameters of the registered clusters and try to keep postgres instaces aligned to their intended states. If `AUTOSTART` parameter is set to `YES` in the `parameters_<alias>.conf` file, then `pgoperated` will control its availability. 
+
+Intended state can be defined by parameter `INTENDED_STATE` in `parameters_<alias>.conf` file. It can be set to `UP` or `DOWN`.
+If it is set to `UP`, then daemon will try to keep the cluster up and running, it will be also started after host restart.
+
+The commands `pgoperate --start` and `pgoperate --stop` can be used to start or stop the cluster manually. If `AUTOSTART` for the current cluster set to `YES`, then these commands will signal daemon to start or stop the claster. If `AUTOSTART` is set to any other values, then local commands will be used to start or stop the cluster.
 
 
 
@@ -423,6 +483,9 @@ Parameters:
 | **PGSQL_BASE**            |                                          | Cluster base directory.            |
 | **TOOLS_LOG_RETENTION_DAYS** | `30`                                  | Retention in days of the log files generated by the pgOperate scripts in `$PGSQL_BASE/log/tools` location.                                   |
 | **PG_PORT**               |                                          | Cluster port to create the cluster. It will be also registered in pgBasEnv.                                   |
+| **AUTOSTART**           | `YES`                                   | If set to YES, then PgOperate daemon process "pgoperated" will monitor this instance and try to keep it aligned to its intended state.                                   |
+| **INTENDED_STATE**           | `DOWN`                                   | Inteded state of the instance. Will have effect only if AUTOSTART=YES. If intended state is UP, then pgoperated will try to keep it up and running.          |
+| **ADDITIONAL_START_OPTIONS**   |                                    | Additional options to pass to postgres (PostgreSQL server executable) during startup.                                   |
 | **PG_ENCODING**           | `UTF8`                                   | The character set of the cluster. Used only during creation.                                   |
 | **PG_DATABASE**           |                                          | Database name which will be created after installation. If empty, then no database will be created                     |
 | **PG_ENABLE_CHECKSUM**    | `yes`                                    | Checksums on data pages. |
@@ -478,24 +541,6 @@ It will create the bundle by default in `$PGOPERATE_BASE/bundle` folder.
 If you want to create bundle in some other location, then provide target folder as first argument.
 
 
-## install_pgoperate.sh
----
-
-Script to install pgOperate on the host.
-
-Copy files from **bundle** folder to some location and execute **install_pgoperate.sh** to install pgOperate.
-
-
-
-## root.sh
----
-
-Script to execute root actions. It can be executed only one time after pgOperate installation.
-
-It will add `01_postgres` file into `/etc/sudoers.d` to allow `postgres` user to `start/stop/status/reload` the `postgresql-<alias>` service with sudo privileges.
-
-
-
 
 
 ## pgoperate
@@ -510,10 +555,13 @@ But to call it from inside the scripts use full path like `$PGOPERATE_BASE/bin/p
 ```
 pgoperate --help
 
-
 Available options:
 
   --version                Show version.
+  --stop                   Stop current cluster. (Signal will be sent to daemon and operation status received)
+  --start                  Start current cluster. (Signal will be sent to daemon and operation status received)
+  --reload                 Reload all running clusters. (pg_ctl reload)
+  --daemon-status          Check the status of the pgoperated.
   --create-cluster         Create new PostgreSQL Cluster
   --add-cluster            Add existing cluster to pgOperate environment
   --remove-cluster         Removes PostgreSQL Cluster
@@ -528,7 +576,10 @@ Available options:
 
   For each option you can get help by adding "help" keyword after the argument, like:
     pgoperate --backup help
+
 ```
+
+
 
 
 ## create_cluster.sh
@@ -559,10 +610,6 @@ Next steps will be performed:
 * `pg_hba.conf` file will be updated
 
 Script must be executed as postgres user.
-
-At the end of installation script will offer to execute `root.sh` as root user.
-
-Switch to root and execute `root.sh`. It will create `postgresql-<alias>` unit file in /etc/systemd/system for systemctl daemon. Cluster will be started with systemctl and in-cluster actions will be executed.
 
 Local connection without password will be possible only by postgres user and root.
 
@@ -612,13 +659,8 @@ The `$PGSQL_BASE` directory will be created. All subdirectories will be created 
 
 Script must be executed as postgres user.
 
-At the end of installation script will offer to execute `root.sh` as root user.
-
-Switch to the root user and execute `root.sh` if you want. It will create `postgresql-<alias>` unit file in /etc/systemd/system for systemctl daemon.
-
-If you already use some other systemctl unit file or some other way to control your PostgreSQL instance, then use `--start-script` and `--stop-script` parameters to specify custom scripts to control the instance.
-
-These two parameters will set `PG_START_SCRIPT` and `PG_STOP_SCRIPT` in `parameters-<alias>.conf` file. You can set them also later.
+If you already use systemd service to control your PostgreSQL instance, then you can continue to use it or switch to pgOperates HA model. If you deside to switch, then deconfigure your serivce. If you prefer to use your service, then prepare custom start and stop scripts to use with pgoperate. You can set them during cluster add operation with `--start-script` and `--stop-script` parameters.
+These two parameters will set `PG_START_SCRIPT` and `PG_STOP_SCRIPT` in `parameters-<alias>.conf` file. You can change them later.
 
 Example for cluster with alias cls1:
 

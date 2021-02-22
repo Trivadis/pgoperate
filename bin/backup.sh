@@ -164,56 +164,6 @@ mkdir -p $bdir/wal
 chown postgres:postgres $bdir/wal
 }
 
-list_backup_dir() {
-echo -e "\nBackup location: $BACKUP_LOCATION"
-if [[ ! -d $BACKUP_LOCATION ]]; then
-  echo
-  echo "Backup directory not created yet. It will be created with first backup command."
-  echo
-  return 0
-fi
-local backups=$(ls $BACKUP_LOCATION/ | grep -E "^[0-9]+-[0-9]+$")
-local d md cnt mdir mid midir
-cnt=0
-md=0
-mid=$(date +"%s")
-if [[ ! -z $backups ]]; then
- for bdir in $(ls -1 $BACKUP_LOCATION/ | grep -E "^[0-9]+-[0-9]+$" | sort -h); do
-   d="$(grep full_backup_time $BACKUP_LOCATION/$bdir/meta.info | cut -s -d"=" -f2)"
-   d=$(eval "echo $d")
-   d=$(date --date="${d}" +%s)
-   [[ $d -gt $md ]] && md=$d && mdir=$bdir
-   [[ $d -lt $mid ]] && mid=$d && midir=$bdir
- done
- local note nwals bsize wsize
- local delimiter="$(printf '%0.1s' ={1..73})"
- printf "%s\n" "$delimiter"
- printf "|%7s|%20s|%10s|%15s|%15s|\n" "Sub Dir" "Backup created" "WALs count" "Backup size(MB)" "WALs size(MB)"
- printf "%s\n" "$delimiter"
- for bdir in $(ls -1 $BACKUP_LOCATION/ | grep -E "^[0-9]+-[0-9]+$" | sort -h); do
-   (( cnt++ ))
-   d="$(grep full_backup_time $BACKUP_LOCATION/$bdir/meta.info | cut -s -d"=" -f2)"
-   d=$(eval "echo $d")
-   nwals=$(ls -1 $BACKUP_LOCATION/$bdir/wal | grep -v "\." | wc -l)
-   bsize=$(du -sm $BACKUP_LOCATION/$bdir/data | awk '{print $1}' | xargs)
-   wsize=$(du -sm $BACKUP_LOCATION/$bdir/wal  | awk '{print $1}' | xargs)
-   if [[ "$midir" == "$mdir" ]]; then
-     note=" <--- Current backup dir"
-   elif [[ "$bdir" == "$midir" ]]; then
-     note=" <--- Oldest backup dir"
-   elif [[ "$bdir" == "$mdir" ]]; then
-     note=" <--- Current backup dir"
-   else
-     note=""
-   fi
-   printf "|%7d|%20s|%10d|%15d|%15d|%-25s\n" "${bdir//-*}"   "$d"   "$nwals"  "$bsize"  "$wsize"  "$note"
- done
- printf "%s\n" "$delimiter"
- echo -e "Number backups: $cnt \n"
-
-fi
-
-}
 
 is_in_recovery() {
   local isrecover=$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d postgres -c "SELECT pg_is_in_recovery();" -t | xargs)
@@ -226,25 +176,9 @@ is_in_recovery() {
 
 
 reload_conf() {
-  local output=$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d postgres -c "SELECT pg_reload_conf();" -t | xargs)
-  if [[ "${output,,}" == "t" ]]; then
-    return 0
-  else
-    return 1
-  fi
-}
-
-
-
-stop_pg() {
-  $PG_BIN_HOME/pg_ctl stop -D $PGSQL_BASE/data -s -m fast
-  return $?
-}
-
-
-start_pg() {
-  $PG_BIN_HOME/pg_ctl start -D $PGSQL_BASE/data -l $PGSQL_BASE/log/server.log -s -o "-p ${PG_PORT} --config_file=$PGSQL_BASE/etc/postgresql.conf" -w -t 300
-  return $?
+  $PG_BIN_HOME/pg_ctl reload -s
+  local RC=$?
+  return $RC
 }
 
 
@@ -465,8 +399,8 @@ if [[ ! "${ARCH_MODE,,}" == "on" && ! "${ARCH_MODE,,}" == "always" ]]; then
      info "Cluster will be restarted to set archive_mode"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" archive_mode "always"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" archive_command "'test ! -f $PGSQL_BASE/arch/%f \&\& cp %p $PGSQL_BASE/arch/%f'"
-     stop_cluster
-     start_cluster
+     $PGOPERATE_BASE/bin/control.sh stop
+     $PGOPERATE_BASE/bin/control.sh start
   fi
 else
   info "Cluster is in archive log mode."

@@ -9,38 +9,6 @@ prepare_logdir() {
   find $PGSQL_BASE/log/tools -mtime +$rdays -exec rm -f {} \;
 }
 
-stop_cluster() {
-  local RC
-  if [[ -z $PG_STOP_SCRIPT ]]; then 
-    sudo systemctl stop postgresql-${PGBASENV_ALIAS} 
-    RC=$?
-  else 
-    $PG_STOP_SCRIPT
-    RC=$?
-  fi
-  if [[ $RC -gt 0 ]]; then
-     echo "ERROR: Failed to stop the cluster. Note, that you can use custom stop script defined by PG_STOP_SCRIPT parameter in parameters file."
-     exit $RC
-  fi
-}
-
-start_cluster() {
-  local message="$1"
-  local RC
-  if [[ -z $PG_START_SCRIPT ]]; then 
-    sudo systemctl start postgresql-${PGBASENV_ALIAS} 
-    RC=$?
-  else 
-    $PG_START_SCRIPT
-    RC=$?
-  fi
-  if [[ $RC -gt 0 ]]; then
-     echo "ERROR: Failed to start the cluster. Check the logs in $PGSQL_BASE/log for details."
-     echo "ERROR: Note, that you can use custom start script defined by PG_START_SCRIPT parameter in parameters file."
-     [[ ! -z $message ]] && echo "$message"
-     exit $RC
-  fi
-}
 
 
 modifyFile() {
@@ -241,23 +209,6 @@ else
 fi
 }
 
-manual_start_stop() {
-if [[ $_IS_ROOT -eq 0 ]]; then  
-  su postgres -c "$PG_BIN_HOME/pg_ctl start -D $PGSQL_BASE/data -l $PGSQL_BASE/log/server.log -o \"--config_file=$PGSQL_BASE/etc/postgresql.conf\""
-else
-  $PG_BIN_HOME/pg_ctl start -D $PGSQL_BASE/data -l $PGSQL_BASE/log/server.log -o "--config_file=$PGSQL_BASE/etc/postgresql.conf"
-fi
-check_server
-[[ $? -gt 0 ]] && local res=1 || local res=0
-if [[ $_IS_ROOT -eq 0 ]]; then  
-  su postgres -c "$PG_BIN_HOME/pg_ctl stop -D $PGSQL_BASE/data -s --mode=smart"
-else
-  $PG_BIN_HOME/pg_ctl stop -D $PGSQL_BASE/data -s --mode=smart
-fi
-return $res
-}
-
-
 
 generate_manual_start_script() {
 echo "#!/usr/bin/env bash
@@ -267,7 +218,6 @@ $TVD_PGHOME/bin/pg_ctl start -D $PGSQL_BASE/data -l $PGSQL_BASE/log/server.log -
 
 chmod +x $PGSQL_BASE/scripts/start.sh
 }
-
 
 
 
@@ -320,17 +270,6 @@ systemctl enable $service_file
 }
 
 
-add_sudoers_rules() {
-echo "
-$PG_SUPERUSER ALL= NOPASSWD: /bin/systemctl start postgresql*
-$PG_SUPERUSER ALL= NOPASSWD: /bin/systemctl stop postgresql*
-$PG_SUPERUSER ALL= NOPASSWD: /bin/systemctl status postgresql*
-" > /etc/sudoers.d/01_${PG_SUPERUSER}
-
-echo "Now user $PG_SUPERUSER can use sudo to start/stop postgresql using systemctl."
-}
-
-
 
 start_pg_service() {
 local service_file=$1
@@ -366,37 +305,55 @@ modify_password_file() {
 }
 
 
-in_cluster_actions() {
-  
-  # Change directory required when executed as root.  
-  cd /tmp
 
-  if [[ ! -z "$PG_SUPERUSER_PWD" ]]; then
-    su postgres -c "$PG_BIN_HOME/psql -p $PG_PORT -U $PG_SUPERUSER -d postgres -c \"alter user $PG_SUPERUSER password '$PG_SUPERUSER_PWD';\" -t"
-  fi
+list_backup_dir() {
+echo -e "\nBackup location: $BACKUP_LOCATION"
+if [[ ! -d $BACKUP_LOCATION ]]; then
+  echo
+  echo "Backup directory not created yet. It will be created with first backup command."
+  echo
+  return 0
+fi
+local backups=$(ls $BACKUP_LOCATION/ | grep -E "^[0-9]+-[0-9]+$")
+local d md cnt mdir mid midir
+cnt=0
+md=0
+mid=$(date +"%s")
+if [[ ! -z $backups ]]; then
+ for bdir in $(ls -1 $BACKUP_LOCATION/ | grep -E "^[0-9]+-[0-9]+$" | sort -h); do
+   d="$(grep full_backup_time $BACKUP_LOCATION/$bdir/meta.info | cut -s -d"=" -f2)"
+   d=$(eval "echo $d")
+   d=$(date --date="${d}" +%s)
+   [[ $d -gt $md ]] && md=$d && mdir=$bdir
+   [[ $d -lt $mid ]] && mid=$d && midir=$bdir
+ done
+ local note nwals bsize wsize
 
-  if [[ ! -z $REPLICA_USER_PASSWORD ]]; then
-    echo "Cluster will be prepared for replication."
-    if [[ -z $REPLICATION_SLOT_NAME ]]; then
-       echo "WARNING: REPLICATION_SLOT_NAME parameter was not specified in parameters.conf. Default name $DEFAULT_REPLICATION_SLOT_NAME will be used."
-       REPLICATION_SLOT_NAME=$DEFAULT_REPLICATION_SLOT_NAME
-    fi
+ printf "┌" && printf "─%.0s" {1..8} && printf "┬" && printf "─%.0s" {1..21} && printf "┬" && printf "─%.0s" {1..11} && printf "┬" && printf "─%.0s" {1..16} && printf "┬" && printf "─%.0s" {1..16} && printf "%s\n" "┐"
+ printf "│ \033[1m%7s\033[0m│ \033[1m%20s\033[0m│ \033[1m%10s\033[0m│ \033[1m%15s\033[0m│ \033[1m%15s\033[0m│\n" "Sub Dir" "Backup created" "WALs count" "Backup size(MB)" "WALs size(MB)"
+ printf "├" && printf "─%.0s" {1..8} && printf "┼" && printf "─%.0s" {1..21} && printf "┼" && printf "─%.0s" {1..11} && printf "┼" && printf "─%.0s" {1..16} && printf "┼" && printf "─%.0s" {1..16} && printf "%s\n" "┤"
 
-    for rslot in $(echo $REPLICATION_SLOT_NAME | sed "s/,/ /g")
-    do
-      su postgres -c "$PG_BIN_HOME/psql -p $PG_PORT -U $PG_SUPERUSER -d postgres -c \"SELECT * FROM pg_create_physical_replication_slot('$rslot');\" -t"
-    done
+ for bdir in $(ls -1 $BACKUP_LOCATION/ | grep -E "^[0-9]+-[0-9]+$" | sort -h); do
+   (( cnt++ ))
+   d="$(grep full_backup_time $BACKUP_LOCATION/$bdir/meta.info | cut -s -d"=" -f2)"
+   d=$(eval "echo $d")
+   nwals=$(ls -1 $BACKUP_LOCATION/$bdir/wal | grep -v "\." | wc -l)
+   bsize=$(du -sm $BACKUP_LOCATION/$bdir/data | awk '{print $1}' | xargs)
+   wsize=$(du -sm $BACKUP_LOCATION/$bdir/wal  | awk '{print $1}' | xargs)
+   if [[ "$midir" == "$mdir" ]]; then
+     note=" <--- Current backup dir"
+   elif [[ "$bdir" == "$midir" ]]; then
+     note=" <--- Oldest backup dir"
+   elif [[ "$bdir" == "$mdir" ]]; then
+     note=" <--- Current backup dir"
+   else
+     note=""
+   fi
+   printf "│ %7s│ %20s│ %10s│ %15s│ %15s│%-25s\n" "${bdir//-*}"   "$d"   "$nwals"  "$bsize"  "$wsize"  "$note"
+ done
+ printf "└" && printf "─%.0s" {1..8} && printf "┴" && printf "─%.0s" {1..21} && printf "┴" && printf "─%.0s" {1..11} && printf "┴" && printf "─%.0s" {1..16} && printf "┴" && printf "─%.0s" {1..16} && printf "%s\n" "┘"
+ echo -e "Number backups: $cnt \n"
 
-    su postgres -c "$PG_BIN_HOME/psql -p $PG_PORT -U $PG_SUPERUSER -d postgres -c \"CREATE USER replica WITH REPLICATION PASSWORD '$REPLICA_USER_PASSWORD';\" -t"
-  fi
+fi
 
-  if [[ ! -z $PG_DATABASE ]]; then
-    echo "Creating default database, role and schema $PG_DATABASE."
-    su postgres -c "$PG_BIN_HOME/psql -p $PG_PORT -U $PG_SUPERUSER -d postgres -c \"CREATE DATABASE $PG_DATABASE ENCODING=$PG_ENCODING;\" -t"
-    su postgres -c "$PG_BIN_HOME/psql -p $PG_PORT -U $PG_SUPERUSER -d $PG_DATABASE -c \"CREATE SCHEMA $PG_DATABASE;\" -t"
-
-    su postgres -c "$PG_BIN_HOME/psql -p $PG_PORT -U $PG_SUPERUSER -d postgres -c \"CREATE ROLE $PG_DATABASE;\""
-    su postgres -c "$PG_BIN_HOME/psql -p $PG_PORT -U $PG_SUPERUSER -d $PG_DATABASE -c \"ALTER SCHEMA $PG_DATABASE OWNER TO $PG_DATABASE;\""
-  fi
 }
-

@@ -57,24 +57,9 @@ printheader() {
 }
 
 
-create_pg_rm_service_sh() {
-  echo "#!/usr/bin/env bash
-
-systemctl disable $PG_SERVICE_FILE
-rm -f /etc/systemd/system/$PG_SERVICE_FILE
-
-" > /tmp/pg_rm_service.sh
-chmod +x /tmp/pg_rm_service.sh
-}
-
-
-
 removing_entry_from_pgtab() {
   sed -i "/;$PG_CLUSTER_ALIAS$/d" $PGBASENV_BASE/etc/pgclustertab
 }
-
-
-
 
 
 ### MAIN ######################################################################
@@ -151,14 +136,13 @@ echo "Current user id: $(id)" >> $LOGFILE
 echo "--------------------------------------------------------------------------------------------------------------------------------" >> $LOGFILE
 echo -e >> $LOGFILE
 
-
-PG_SERVICE_FILE="postgresql-${PG_CLUSTER_ALIAS}.service"
 PG_BIN_HOME=$TVD_PGHOME/bin
 
 
 printheader "Stopping cluster."
 #sudo systemctl stop $PG_SERVICE_FILE
-stop_cluster
+$PGOPERATE_BASE/bin/control.sh stop
+[[ $? -gt 0 ]] && exit 1
 
 printheader "Removing $PGSQL_BASE directory."
 if [[ -d $PGSQL_BASE ]]; then
@@ -175,11 +159,9 @@ if [[ $PGPORT -gt 1 ]]; then
   sed -i "/:$PGPORT:/d" ~/.pgpass
 fi 
 
-create_pg_rm_service_sh
 
 echo -e
-echo "INFO: Please execute /tmp/pg_rm_service.sh as root user to remove service file for this cluster."
-echo " "
+echo "Cluster removed."
 
 echo -e "\nLogfile of this execution: $LOGFILE\n"
 exit 0

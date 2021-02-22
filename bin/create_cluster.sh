@@ -69,7 +69,7 @@ PG_BIN_HOME=$PG_BIN_HOME
 add_sudoers_rules
 create_service_file $PG_SERVICE_FILE
 start_pg_service $PG_SERVICE_FILE
-in_cluster_actions
+
 
 " > $PGSQL_BASE/scripts/root.sh 
 chmod 700 $PGSQL_BASE/scripts/root.sh 
@@ -86,6 +86,48 @@ minimize_conf_file() {
     sed -i '/^[ |\t]*#/d' $1
     sed -i '/^$/d' $1
   fi
+}
+
+
+in_cluster_actions() {
+  
+  if [[ ! -z "$PG_SUPERUSER_PWD" ]]; then
+    $PG_BIN_HOME/psql -p $PG_PORT -U $PG_SUPERUSER -d postgres -c "alter user $PG_SUPERUSER password '$PG_SUPERUSER_PWD';" -t
+  fi
+
+  if [[ ! -z $REPLICA_USER_PASSWORD ]]; then
+    echo "Cluster will be prepared for replication."
+    if [[ -z $REPLICATION_SLOT_NAME ]]; then
+       echo "WARNING: REPLICATION_SLOT_NAME parameter was not specified in parameters.conf. Default name $DEFAULT_REPLICATION_SLOT_NAME will be used."
+       REPLICATION_SLOT_NAME=$DEFAULT_REPLICATION_SLOT_NAME
+    fi
+
+    for rslot in $(echo $REPLICATION_SLOT_NAME | sed "s/,/ /g")
+    do
+      $PG_BIN_HOME/psql -p $PG_PORT -U $PG_SUPERUSER -d postgres -c "SELECT * FROM pg_create_physical_replication_slot('$rslot');" -t
+    done
+
+    $PG_BIN_HOME/psql -p $PG_PORT -U $PG_SUPERUSER -d postgres -c "CREATE USER replica WITH REPLICATION PASSWORD '$REPLICA_USER_PASSWORD';" -t
+  fi
+
+  if [[ ! -z $PG_DATABASE ]]; then
+    echo "Creating default database, role and schema $PG_DATABASE."
+    $PG_BIN_HOME/psql -p $PG_PORT -U $PG_SUPERUSER -d postgres -c "CREATE DATABASE $PG_DATABASE ENCODING=$PG_ENCODING;" -t
+    $PG_BIN_HOME/psql -p $PG_PORT -U $PG_SUPERUSER -d $PG_DATABASE -c "CREATE SCHEMA $PG_DATABASE;" -t
+
+    $PG_BIN_HOME/psql -p $PG_PORT -U $PG_SUPERUSER -d postgres -c "CREATE ROLE $PG_DATABASE;"
+    $PG_BIN_HOME/psql -p $PG_PORT -U $PG_SUPERUSER -d $PG_DATABASE -c "ALTER SCHEMA $PG_DATABASE OWNER TO $PG_DATABASE;"
+  fi
+}
+
+
+
+manual_start_stop() {
+  $PG_BIN_HOME/pg_ctl start -D $PGSQL_BASE/data -l $PGSQL_BASE/log/server.log -o "--config_file=$PGSQL_BASE/etc/postgresql.conf"
+  check_server
+  [[ $? -gt 0 ]] && local res=1 || local res=0
+  $PG_BIN_HOME/pg_ctl stop -D $PGSQL_BASE/data -s --mode=smart
+  return $res
 }
 
 
@@ -139,12 +181,31 @@ source $PARAMETERS_FILE
 
 _SAVE_=$PGSQL_BASE
 
+
+set_param() {
+local param="$1"
+local value="$2"
+local repval="$(grep -Ei "(^|#| )$param *=" $PARAMETERS_FILE)"
+
+if [[ ${#repval} -gt 0 ]]; then
+  modifyFile $PARAMETERS_FILE rep "$param=$value" "${repval//[$'\n']}"
+else
+  modifyFile $PARAMETERS_FILE add "$param=$value"
+fi
+}
+
+
 # Define log file
 mkdir -p $PGOPERATE_BASE/log
 declare -r LOGFILE="$PGOPERATE_BASE/log/$(basename $0)_$(date +"%Y%m%d_%H%M%S").log"
 
+
 # Everything in curly braces will be logged in logfile
 {
+
+# Lock the pgclustertab and parameters file
+exec 7<>$PGBASENV_BASE/etc/pgclustertab
+flock -x 7
 
 echo "Command line arguments: ${ARGS}" >> $LOGFILE
 echo "Current user id: $(id)" >> $LOGFILE
@@ -168,7 +229,6 @@ fi
 pgsetenv $TVD_PGHOME_ALIAS
 export PGSQL_BASE=$_SAVE_
 
-PG_SERVICE_FILE="postgresql-${PG_CLUSTER_ALIAS}.service"
 PG_BIN_HOME=$TVD_PGHOME/bin
 
 [[ -z $PGSQL_BASE ]] && echo "ERROR: PGSQL_BASE cannot be empty." && exit 1
@@ -180,6 +240,7 @@ fi
 create_dirs
 
 printheader "Initialize PostgreSQL CLuster"
+set_param "INTENDED_STATE" "DOWN"
 initialize_db
 
 printheader "Moving config files to $PGSQL_BASE/etc"
@@ -218,14 +279,21 @@ printheader "Adding entry into ~/.pgpass for superuser."
 modify_password_file "$PG_PORT" "$PG_SUPERUSER" "$PG_SUPERUSER_PWD" 
 fi
 
+printheader "Starting cluster with pgoperated daemon process."
+# Release lock, because pgsetenv will require this lock.
+exec 7>&-
+pgsetenv $PG_CLUSTER_ALIAS
+$PGOPERATE_BASE/bin/control.sh start
+[[ $? -gt 0 ]] && exit 1
+
+printheader "Executing in database actions."
+in_cluster_actions
+
+
 echo -e
-echo "INFO: Please execute $PGSQL_BASE/scripts/root.sh as root user."
-echo " "
-echo "        It will execute following steps:"
-echo "           1. Create service file for this cluster. (/etc/systemd/system/$PG_SERVICE_FILE)"
-echo "           2. Start the service $PG_SERVICE_FILE"
-echo "           3. Execute in-cluster actions."
-echo " "
+echo "Cluster created and ready to use."
+echo -e
+echo "Execute now pgsetenv in current shell to source new database alias."
 
 
 echo -e "\nLogfile of this execution: $LOGFILE\n"

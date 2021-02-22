@@ -67,20 +67,6 @@ printheader() {
 }
 
 
-create_root_sh() {
-  echo "#!/usr/bin/env bash
-
-source $PGOPERATE_BASE/lib/shared.lib
-source $PARAMETERS_FILE
-PG_BIN_HOME=$PG_BIN_HOME
-
-add_sudoers_rules
-create_service_file $PG_SERVICE_FILE
-
-" > $PGSQL_BASE/scripts/root.sh 
-chmod 700 $PGSQL_BASE/scripts/root.sh 
-}
-
 set_param() {
 local param="$1"
 local value="$2"
@@ -428,10 +414,18 @@ fi
 
 
 printheader "Processing start/stop scripts"
+if [[ $SILENT_MODE != "YES" ]]; then
+echo "PgOperate uses its own daemon to control high availability of its clusters. The daemon process pgoperated"
+echo "runs as postgres owner user and monitors clusters trying to achive their INTENDED_STATE defined in each"
+echo "clusters parameters.conf file. Check the parmaters.conf file or README.md for the exact commands used to"
+echo "start and stop clusters. If you want to use your custom scripts to start or stop this cluster, then"
+echo "you can provide them now. In this case pgoperated will use these scripts to start or stop the cluster."
+fi
+
 if [[ $SILENT_MODE == "YES" ]]; then
   REPLY=$INPUT_PG_START_SCRIPT
 else 
-  read -p "If you will not use systemctl unit file postgresql-$PG_CLUSTER_ALIAS.service, then provide cluster start script: "
+  read -p "If you dont want standart startup command to start your cluster, then provide custom start script: "
 fi
 echo
 PG_START_SCRIPT=$REPLY
@@ -439,7 +433,7 @@ PG_START_SCRIPT=$REPLY
 if [[ $SILENT_MODE == "YES" ]]; then
   REPLY=$INPUT_PG_STOP_SCRIPT
 else 
-  read -p "If you will not use systemctl unit file postgresql-$PG_CLUSTER_ALIAS.service, then provide cluster stop script: "
+  read -p "If you dont want standart stop command to stop your cluster, then provide custom stop script: "
 fi
 echo
 PG_STOP_SCRIPT=$REPLY
@@ -457,35 +451,15 @@ set_param "PG_ENCODING" "$(psql -c "show server_encoding;" -t 2>/dev/null | xarg
 PG_ENABLE_CHECKSUM=$(pg_controldata | grep "Data page checksum version:" | cut -d":" -f2 | xargs)
 [[ $PG_ENABLE_CHECKSUM == "1" ]] && PG_ENABLE_CHECKSUM="yes" || PG_ENABLE_CHECKSUM="no"
 set_param "PG_ENABLE_CHECKSUM" "$PG_ENABLE_CHECKSUM"
-set_param "PG_SUPERUSER" "$PG_SUPERUSER"
-set_param "PG_SUPERUSER_PWD" "$PG_SUPERUSER_PWD"
-set_param "BACKUP_LOCATION" "\$PGSQL_BASE/backup"
-set_param "PG_START_SCRIPT" "$PG_START_SCRIPT"
-set_param "PG_STOP_SCRIPT" "$PG_STOP_SCRIPT"
-
-
-PG_SERVICE_FILE="postgresql-${PG_CLUSTER_ALIAS}.service"
-PG_BIN_HOME=$TVD_PGHOME/bin
-
-
-printheader "Generating $PGSQL_BASE/scripts/start.sh."
-mkdir -p $PGSQL_BASE/scripts
+set_param "INTENDED_STATE" "UP"
 generate_manual_start_script
 
-printheader "Generating $PGSQL_BASE/scripts/root.sh file."
-create_root_sh
 
 printheader "Adding entry into ~/.pgpass for superuser."
 modify_password_file "$PG_PORT" "$PG_SUPERUSER" "$PG_SUPERUSER_PWD" 
 
 echo -e
-echo "INFO: If you want to register cluster with systemctl execute $PGSQL_BASE/scripts/root.sh as root user."
-echo " "
-echo "        It will execute following steps:"
-echo "           Create service file for this cluster. (/etc/systemd/system/$PG_SERVICE_FILE)"
-echo " "
-
-
+echo "Cluster successfully added."
 echo -e "\nLogfile of this execution: $LOGFILE\n"
 exit 0
 

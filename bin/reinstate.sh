@@ -187,14 +187,14 @@ do_rewind(){
   #   Create the password file in the same directory as $0 script and set PG_SUPERUSER_PWDFILE parameter in parameters.conf."
   #   exit 1
   # fi
-   stop_cluster
+   $PGOPERATE_BASE/bin/control.sh stop
    $SU_PREFIX "$PG_BIN_HOME/pg_rewind --target-pgdata=$PGSQL_BASE/data --source-server=\"host=$MASTER_HOST port=$PG_PORT user=$PG_SUPERUSER dbname=postgres connect_timeout=5\" -P"
    if [[ $TVD_PGVERSION -ge 12 ]]; then
      prepare_for_standby
    else
      create_recovery_file
    fi
-   start_cluster
+   $PGOPERATE_BASE/bin/control.sh start
 }
 
 do_duplicate(){

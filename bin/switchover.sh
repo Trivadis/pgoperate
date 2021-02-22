@@ -237,7 +237,7 @@ else
   fi
   
   printheader "Stopping master."
-  stop_cluster
+  $PGOPERATE_BASE/bin/control.sh stop
   RC=$?
   [[ $RC -gt 0 ]] && exit 1
 

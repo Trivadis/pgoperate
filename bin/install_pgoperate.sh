@@ -33,6 +33,14 @@ TVDBASE_DEF=$HOME/tvdtoolbox
 unset TVDBASE
 
 
+if [[ "$1" =~ -h|--help ]]; then
+  echo "
+  pgOperate installation script.
+  "
+  exit 0
+fi
+
+
 TARFILE=$(ls -1 pgoperate-*.tar 2>/dev/null | sort -n -t"-" -k2 | tail -1)
 if [[ -z $TARFILE ]]; then
 	echo "ERROR: Tar file pgoperate-<VERSION>.tar do not found in current directory!"
@@ -78,7 +86,9 @@ alias cdbase='eval \"cd \$(test -f \$PGOPERATE_BASE/etc/parameters_\${PGBASENV_A
 " >> $PGBASENV_BASE/etc/pgbasenv_standard.conf
 
 echo -e "\n>>> INSTALLATION STEP: Update \$PGOPERATE_BASE/bin/root.sh with current username.\n"
-sed -i "s/PG_SUPERUSER=.*/PG_SUPERUSER=$(id -un)/g" $PGOPERATE_BASE/bin/root.sh
+sed -i "s/^USER=.*/USER=$(id -un)/g" $PGOPERATE_BASE/bin/root.sh
+sed -i "s/^GROUP=.*/GROUP=$(id -gn)/g" $PGOPERATE_BASE/bin/root.sh
+sed -i "s/^PGOPERATE_BASE=.*/PGOPERATE_BASE=${PGOPERATE_BASE//\//\\/}/g" $PGOPERATE_BASE/bin/root.sh
 
 echo -e "\nInstallation successfully completed."
 

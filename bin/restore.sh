@@ -101,58 +101,6 @@ info() {
 }
 
 
-list_backup_dir() {
-echo -e "\nBackup location: $BACKUP_LOCATION"
-if [[ ! -d $BACKUP_LOCATION ]]; then
-  echo
-  echo "Backup directory not created yet. It will be created with first backup command."
-  echo
-  return 0
-fi
-local backups=$(ls $BACKUP_LOCATION/ | grep -E "^[0-9]+-[0-9]+$")
-local d md cnt mdir mid midir
-cnt=0
-md=0
-mid=$(date +"%s")
-if [[ ! -z $backups ]]; then
- for bdir in $(ls -1 $BACKUP_LOCATION/ | grep -E "^[0-9]+-[0-9]+$" | sort -h); do
-   d="$(grep full_backup_time $BACKUP_LOCATION/$bdir/meta.info | cut -s -d"=" -f2)"
-   d=$(eval "echo $d")
-   d=$(date --date="${d}" +%s)
-   [[ $d -gt $md ]] && md=$d && mdir=$bdir
-   [[ $d -lt $mid ]] && mid=$d && midir=$bdir
- done
- local note nwals bsize wsize
- local delimiter="$(printf '%0.1s' ={1..73})"
- printf "%s\n" "$delimiter"
- printf "|%7s|%20s|%10s|%15s|%15s|\n" "Sub Dir" "Backup created" "WALs count" "Backup size(MB)" "WALs size(MB)"
- printf "%s\n" "$delimiter"
- for bdir in $(ls -1 $BACKUP_LOCATION/ | grep -E "^[0-9]+-[0-9]+$" | sort -h); do
-   (( cnt++ ))
-   d="$(grep full_backup_time $BACKUP_LOCATION/$bdir/meta.info | cut -s -d"=" -f2)"
-   d=$(eval "echo $d")
-   nwals=$(ls -1 $BACKUP_LOCATION/$bdir/wal | grep -v "\." | wc -l)
-   bsize=$(du -sm $BACKUP_LOCATION/$bdir/data | awk '{print $1}' | xargs)
-   wsize=$(du -sm $BACKUP_LOCATION/$bdir/wal  | awk '{print $1}' | xargs)
-   if [[ "$midir" == "$mdir" ]]; then
-     note=" <--- Current backup dir"
-   elif [[ "$bdir" == "$midir" ]]; then
-     note=" <--- Oldest backup dir"
-   elif [[ "$bdir" == "$mdir" ]]; then
-     note=" <--- Current backup dir"
-   else
-     note=""
-   fi
-   printf "|%7d|%20s|%10d|%15d|%15d|%-25s\n" "${bdir//-*}"   "$d"   "$nwals"  "$bsize"  "$wsize"  "$note"
- done
- printf "%s\n" "$delimiter"
- echo -e "Number backups: $cnt \n"
-
-fi
-
-}
-
-
 get_curr_backup_loc() {
 local backups=$(ls $BACKUP_LOCATION/ | grep -E "^[0-9]+-[0-9]+$")
 local d md mdir
@@ -171,17 +119,6 @@ else
 fi
 }
 
-
-stop_pg() {
-  $PG_BIN_HOME/pg_ctl stop -D $PGSQL_BASE/data -s -m fast
-  return $?
-}
-
-
-start_pg() {
-  $PG_BIN_HOME/pg_ctl start -D $PGSQL_BASE/data -l $PGSQL_BASE/log/server.log -s -o "-p ${PG_PORT} --config_file=$PGSQL_BASE/etc/postgresql.conf" -w -t 300
-  return $?
-}
 
 getuntildir() {
 local untiltime=$1
@@ -245,10 +182,9 @@ local untiltime="$2"
 local tmpdir="/tmp/pgrestore_pg_wal"
 
 printheader "Stopping database cluster."
-
 #local current_wal=$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -c "SELECT file_name from pg_walfile_name_offset(pg_current_wal_lsn());" -t | xargs)
-stop_cluster
-
+$PGOPERATE_BASE/bin/control.sh stop
+[[ $? -gt 0 ]] && exit 1
 
 if [[ ! -d $PGSQL_BASE/data ]]; then
   info "Directory $PGSQL_BASE/data doesn't exist. Will be created."
@@ -343,7 +279,8 @@ recovery_end_command = 'rm -rf $tmpdir && rm -rf /tmp/pg_replslot'" > $PGSQL_BAS
 fi
 
 printheader "Starting database cluster to process recovery."
-start_cluster
+$PGOPERATE_BASE/bin/control.sh start
+[[ $? -gt 0 ]] && exit 1
 
 echo -e
 echo "Done success."

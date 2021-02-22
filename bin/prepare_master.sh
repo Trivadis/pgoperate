@@ -87,24 +87,9 @@ info() {
 
 
 reload_conf() {
-  local output=$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d postgres -c "SELECT pg_reload_conf();" -t | xargs)
-  if [[ "${output,,}" == "t" ]]; then
-    return 0
-  else
-    return 1
-  fi
-}
-
-
-stop_pg() {
-  $PG_BIN_HOME/pg_ctl stop -D $PGSQL_BASE/data -s -m fast
-  return $?
-}
-
-
-start_pg() {
-  $PG_BIN_HOME/pg_ctl start -D $PGSQL_BASE/data -l $PGSQL_BASE/log/server.log -s -o "-p ${PG_PORT} --config_file=$PGSQL_BASE/etc/postgresql.conf" -w -t 300
-  return $?
+  $PG_BIN_HOME/pg_ctl reload -s
+  local RC=$?
+  return $RC
 }
 
 
@@ -187,8 +172,8 @@ if [[ "$track_commit_enabled" == "on" ]]; then
   reload_conf
 else
   printheader "Restarting postgresql"
-  stop_cluster
-  start_cluster
+  $PGOPERATE_BASE/bin/control.sh stop
+  $PGOPERATE_BASE/bin/control.sh start
 fi
 
 echo -e "\nLogfile of this execution: $LOGFILE\n"
