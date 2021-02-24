@@ -150,7 +150,7 @@ SUCCESS: From check PG_CHECK_WAL_COUNT: WAL files count is 5, the current WAL si
 
 ## Installation and upgrade
 
-To install pgOperate you need installer script `install_pgoperate.sh` and tar file with current version.
+To install pgOperate you need installer script `install_pgoperate.sh` and tar file with current version..
 
 Both files can be downloaded from directory `bundle`.
 
