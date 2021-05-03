@@ -117,7 +117,8 @@ check_dead_rows() {
 # This function will be used in standby checks to get connect info from recovery.conf to connect to master.
 get_master_connectinfo() {
   if [[ $TVD_PGVERSION -ge 12 ]]; then
-    local tmp="$(grep primary_conninfo $PGSQL_BASE/etc/postgresql.conf | grep -oE "'.+'")"
+    local tmp="$(grep primary_conninfo $PGSQL_BASE/data/postgresql.auto.conf | grep -oE "'.+'")"
+    [[ -z $tmp ]] && tmp="$(grep primary_conninfo $PGSQL_BASE/etc/postgresql.conf | grep -oE "'.+'")"
   else
     local tmp="$(grep primary_conninfo $PGSQL_BASE/data/recovery.conf | grep -oE "'.+'")"
   fi
@@ -188,6 +189,7 @@ check_stdby_ap_lag_time() {
 
  if [[ -z $last_master_commit_time ]]; then
     check_stdby_ap_lag_time_PAYLOAD="Cannot identify master last commit time. No activity on master or track_commit_timestamp not set to on!"
+    check_stdby_ap_lag_time_VALUE=-1
     return 0
  fi
     
@@ -196,7 +198,10 @@ check_stdby_ap_lag_time() {
 
  local delay_secs=$((last_master_commit_time-last_apply_time))
  local delay_mins=$((delay_secs/60))
-  
+ 
+ # This variable is used by standbymgr.sh  
+ check_stdby_ap_lag_time_VALUE=$delay_mins
+
  if [[ $delay_mins -ge $check_stdby_ap_lag_time_THRESHOLD ]]; then
     check_stdby_ap_lag_time_PAYLOAD="Current apply lag between master and standby is ${delay_mins} minutes, more than defined threshold $check_stdby_ap_lag_time_THRESHOLD!"
     return 1
@@ -233,7 +238,10 @@ check_stdby_tr_delay_mb() {
 
  local delay_bytes="$(exec_pg "select pg_wal_lsn_diff('$( echo $last_master_lsn | xargs)', pg_last_wal_receive_lsn())" | xargs)"
  local delay_mb=$((delay_bytes/1024/1024))
-  
+ 
+ # This variable is used by standbymgr.sh
+ check_stdby_tr_delay_mb_VALUE=$delay_mb
+ 
  if [[ $delay_mb -ge $check_stdby_tr_delay_mb_THRESHOLD ]]; then
     check_stdby_tr_delay_mb_PAYLOAD="Current transfer delay between master and standby is ${delay_mb}MB, more than defined threshold $check_stdby_tr_delay_mb_THRESHOLD!"
     return 1
@@ -259,6 +267,9 @@ check_stdby_apply_delay_mb() {
  local delay_bytes="$(exec_pg "select pg_wal_lsn_diff(pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn())" | xargs)"
  local delay_mb=$((delay_bytes/1024/1024))
   
+ # This variable is used by standbymgr.sh
+ check_stdby_apply_delay_mb_VALUE=$delay_mb
+
  if [[ $delay_mb -ge $check_stdby_apply_delay_mb_THRESHOLD ]]; then
     check_stdby_apply_delay_mb_PAYLOAD="Current apply delay between received and applied lsn is ${delay_mb}MB, more than defined threshold $check_stdby_apply_delay_mb_THRESHOLD!"
     return 1

@@ -127,8 +127,8 @@ else
    local PG_CHKSUM=""
 fi
 
-if [[ $_IS_ROOT -eq 0 ]]; then
-  su postgres -c "$PG_BIN_HOME/initdb -D $PGSQL_BASE/data --encoding=$PG_ENCODING $PG_CHKSUM --username=$PG_SUPERUSER"
+if [[ $SILENT -eq 1 ]]; then
+  $PG_BIN_HOME/initdb -D $PGSQL_BASE/data --encoding=$PG_ENCODING $PG_CHKSUM --username=$PG_SUPERUSER >/dev/null 2>&1
 else
   $PG_BIN_HOME/initdb -D $PGSQL_BASE/data --encoding=$PG_ENCODING $PG_CHKSUM --username=$PG_SUPERUSER
 fi
@@ -160,7 +160,6 @@ set_conf_param "$PGSQL_BASE/etc/postgresql.conf" search_path "'\"\$user\", publi
 # Replication related
 set_conf_param "$PGSQL_BASE/etc/postgresql.conf" wal_level "replica"
 set_conf_param "$PGSQL_BASE/etc/postgresql.conf" max_wal_senders "10"
-set_conf_param "$PGSQL_BASE/etc/postgresql.conf" max_wal_size "1GB"
 set_conf_param "$PGSQL_BASE/etc/postgresql.conf" max_replication_slots "10"
 set_conf_param "$PGSQL_BASE/etc/postgresql.conf" track_commit_timestamp "on"
 

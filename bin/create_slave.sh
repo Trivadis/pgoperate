@@ -124,7 +124,6 @@ update_db_params() {
 modifyFile "$PGSQL_BASE/etc/postgresql.conf" bkp
 set_conf_param "$PGSQL_BASE/etc/postgresql.conf" wal_level "replica"
 set_conf_param "$PGSQL_BASE/etc/postgresql.conf" max_wal_senders "10"
-set_conf_param "$PGSQL_BASE/etc/postgresql.conf" max_wal_size "1GB"
 set_conf_param "$PGSQL_BASE/etc/postgresql.conf" max_replication_slots "10"
 set_conf_param "$PGSQL_BASE/etc/postgresql.conf" hot_standby "on"
 }
@@ -196,7 +195,7 @@ if [[ $TVD_PGVERSION -ge 12 ]]; then
   set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_timeline "'latest'"
   touch $PGSQL_BASE/data/standby.signal
 else
-  [[ ! -z $BACKUP_LOCATION ]] && echo "restore_command = 'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'" > $PGSQL_BASE/data/recovery.conf
+  [[ ! -z $BACKUP_LOCATION ]] && echo "restore_command = 'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'" >> $PGSQL_BASE/data/recovery.conf
   echo "primary_slot_name = '${REPLICATION_SLOT_NAME//,*}'" >> $PGSQL_BASE/data/recovery.conf
   echo "recovery_target_timeline = 'latest'" >> $PGSQL_BASE/data/recovery.conf
 fi

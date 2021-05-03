@@ -63,42 +63,39 @@ Correct backup subdirectory will be identified and Cluster will be restored to t
 
 ### Create standby
 
-If sales cluster runs on node1 and we want to create standby on node2, then copy $PGOPERATE_BASE/etc/parameters_sales.conf from node1 to node2.
+If sales cluster runs on node1 and we want to create standby on node2, then execute add standby command on master site node1.
 
-Then bootstrap empty cluster:
 ```
-node2 $ pgoperate --create-cluster --alias sales
+node1 $ pgoperate --standbymgr --add-standby --target node2
 ```
-
-Then create standby cluster:
-```
-node2 $ pgoperate --create-slave --master node1
-```
-
-### Failover to standby 
-
-Promote standby to master on node2:
-```
-node2 $ pgoperate --promote
-```
-
-When old primary is reachable again, reinstate as new standby:
-```
-node1 $ pgoperate --reinstate -m node2 -f
-```
-
 
 ### Switchover to standby
 
 With pgOperate it is very easy to switchover to standby.
 
-`pgoperate --switchover` can be executed from master and standby sites. Passwordless ssh connection must be preconfigured.
+```
+node1 $ pgoperate --standbymgr --switchover --target node2
+``` 
 
-Execute as postgres user:
+### Failover to standby 
+
+If you are on standby site node2, then
 
 ```
-pgoperate --switchover
-``` 
+node2 $ pgoperate --standbymgr --failover
+```
+
+### Check standby configuration
+
+```
+$ pgoperate --standbymgr --status
+
+Node_number Node_name            Role            State WAL_receiver Apply_lag_MB Transfer_lag_MB Transfer_lag_Min
+1           node1                MASTER          UP
+2           node2                STANDBY         UP    streaming             0               0                0
+3           node3                STANDBY         UP    streaming             0               0                0 
+
+```
 
 
 ### Check the cluster
@@ -150,7 +147,7 @@ SUCCESS: From check PG_CHECK_WAL_COUNT: WAL files count is 5, the current WAL si
 
 ## Installation and upgrade
 
-To install pgOperate you need installer script `install_pgoperate.sh` and tar file with current version..
+To install pgOperate you need installer script `install_pgoperate.sh` and tar file with current version.
 
 Both files can be downloaded from directory `bundle`.
 
@@ -188,12 +185,8 @@ If there will be special installation notes, they will be described in [Change L
 | ----------------------- | ---------------------------------------------------------------------- |
 | **create_cluster.sh**   | Creates new PostgreSQL cluster.                                        |
 | **add_cluster.sh**      | Add existing Cluster to pgOperate environment.                         |
-| **remove_cluster.sh**   | Removes PostgreSQL cluster.                                             |
-| **prepare_master.sh**   | Prepares PostgreSQL cluster to master role.                            |
-| **create_slave.sh**     | Creates standby cluster.                                               |
-| **promote.sh**          | Promotes standby to master.                                            |
-| **reinstate.sh**        | Starts old master as new standby.                                      |
-| **switchover.sh**       | Automatic switchover to standby site.                                  |
+| **remove_cluster.sh**   | Removes PostgreSQL cluster.                                            |
+| **standbymgr.sh**       | Script to add and manage standby cluster.                              |
 | **backup.sh**           | Backs up PostgreSQL cluster.                                             |
 | **restore.sh**          | Restore PostgreSQL cluster.                                            |
 | **check.sh**            | Executes different monitoring checks.                                  |
@@ -240,11 +233,7 @@ $PGOPERATE_BASE ┐
                 │        ├── pgoperate
                 │        ├── create_cluster.sh
                 │        ├── remove_cluster.sh
-                │        ├── prepare_master.sh
-                │        ├── create_slave.sh
-                │        ├── promote.sh
-                │        ├── reinstate.sh
-                │        ├── switchover.sh
+                │        ├── standbymgr.sh
                 │        ├── backup.sh
                 │        ├── restore.sh
                 │        ├── check.sh
@@ -253,6 +242,10 @@ $PGOPERATE_BASE ┐
                 │        ├── install_pgoperate.sh
                 │        ├── bundle.sh       
                 │        └── VERSION
+                │
+                ├─── db ─┐
+                │        ├── repconf_<alias>
+                │        └── ...
                 │
                 ├─── etc ┐
                 │        ├── parameters_mycls.conf.tpl
@@ -503,9 +496,9 @@ Parameters:
 | **BACKUP_LOCATION**       | `$PGSQL_BASE/backup`                     | Directory to store backup files.                                             |
 | **BACKUP_REDUNDANCY**     | `5`                                      | Backup redundancy. Count of backups to keep.                                                 |
 | **BACKUP_RETENTION_DAYS**  | `7`                                      | Backup retention in days. Keeps backups required to restore so much days back.  This parameter, if set, overrides BACKUP_REDUNDANCY.                                                |
-| **MASTER_HOST**           |                                          | Replication related. The name or ip address of the master cluster.           |
-| **MASTER_PORT**           |                                          | Replication related. The PORT of the master cluster. If not specified then `$PGPORT` will be used.           |
-| **REPLICATION_SLOT_NAME** | `slave001, slave002, slave003  | Replication related. Replication slot names to be created in master cluster. More than one replication slot separated by comma can be specified.|
+| **MASTER_HOST**           |                                          | !DEPRECATED! Replication related. The name or ip address of the master cluster.           |
+| **MASTER_PORT**           |                                          | !DEPRECATED! Replication related. The PORT of the master cluster. If not specified then `$PGPORT` will be used.           |
+| **REPLICATION_SLOT_NAME** | `slave001, slave002, slave003  | !DEPRECATED! Replication related. Replication slot names to be created in master cluster. More than one replication slot separated by comma can be specified.|
 | **REPLICA_USER_PASSWORD** |                                          | Replication related. Password for user REPLICA which will be created on master site. Slave will use this credential to connect to master.|
 
 
@@ -568,11 +561,8 @@ Available options:
   --backup                 Backup PostgreSQL CLuster
   --restore                Restore PostgreSQL Cluster
   --check                  Execute monitoring checks
-  --create-slave           Create Slave PostgreSQL Cluster and configure streaming replication
-  --promote                Promote Slave cluster to Master
-  --reinstate              Convert old Master to Slave and start streaming replication
-  --prepare-master         Prepare PostgreSQL Cluster for Master role
-  --switchover             Switchover to standby site.
+  --standbymgr             Interface to standby manager. Use "--standbymgr help" to get available options.
+
 
   For each option you can get help by adding "help" keyword after the argument, like:
     pgoperate --backup help
@@ -712,6 +702,38 @@ Cluster pg12 will be deleted. Cluster base directory including $PGDATA will be r
 
 
 
+## standbymgr.sh
+---
+
+Script to add and manage standby clusters.
+
+Can be executed over `pgoperate --standbymgr`.
+
+Available options:
+```
+ --check --target <hostname>          Check the SSH connection from local host to target host and back.
+ --status                             Show current configuration and status.
+ --sync-config                        Synchronize config with real-time information and distribute on all configured nodes.
+ --add-standby --target <hostname>    Add new standby cluster on spevified host. Must be executed on master host.
+ --switchover [--target <hostname>]   Switchover to standby. If target was not provided, then local host will be a target.
+ --failover [--target <hostname>]     Failover to standby. If target was not provided, then local host will be a target.
+                                        Old master will be stopped and marked as REINSTATE in configuration.
+ --reinstate [--target <hostname>]    Reinstate old primary as new standby.
+ --prepare-master [--target <hostname>]  Can be used to prepare the hostname for master role.
+
+ --force     Can be used with any option to force some operations.
+
+```
+
+Prerequsite for `standbymgr` are:
+* pgBaseEnv and pgOperate must be installed on remote host
+* Passwordless ssh connection must be configured between all members of the configuration
+
+All commands except `--add-standby` can be executed on any host of the configuration.
+
+During switchover, last checkpoint location and next XID will be compared between master and target standby. If there will be risk of data loss, then switchover will not happen. In such cases the reason of the lag must be detected and eliminated or `--failover` option must be used to execute failover.
+
+After failover previous master will be stopped if accessable and its status will be set to REINSTATE. You must execute `--reinstate` on this cluster to convert it to new standby.
 
 
 

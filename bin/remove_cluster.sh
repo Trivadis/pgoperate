@@ -122,6 +122,7 @@ if [[ ! $REPLY == "yes" ]]; then
   exit 0
 fi
 
+declare -r REPCONF=$PGOPERATE_BASE/db/repconf_${PG_CLUSTER_ALIAS}
 
 # Define log file
 mkdir -p $PGOPERATE_BASE/log
@@ -143,6 +144,9 @@ printheader "Stopping cluster."
 #sudo systemctl stop $PG_SERVICE_FILE
 $PGOPERATE_BASE/bin/control.sh stop
 [[ $? -gt 0 ]] && exit 1
+
+# Remove from standby config if any
+$PGOPERATE_BASE/bin/standbymgr.sh --remove
 
 printheader "Removing $PGSQL_BASE directory."
 if [[ -d $PGSQL_BASE ]]; then

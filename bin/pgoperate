@@ -36,12 +36,8 @@ Available options:
   --backup                 Backup PostgreSQL CLuster
   --restore                Restore PostgreSQL Cluster
   --check                  Execute monitoring checks
-  --create-slave           Create Slave PostgreSQL Cluster and configure streaming replication
-  --promote                Promote Slave cluster to Master
-  --reinstate              Convert old Master to Slave and start streaming replication
-  --prepare-master         Prepare PostgreSQL Cluster for Master role
-  --switchover             Switchover to standby site.
-  
+  --standbymgr             Interface to standby manager. Use \"--standbymgr help\" to get available options. 
+
   For each option you can get help by adding \"help\" keyword after the argument, like:
     pgoperate --backup help
 
@@ -52,6 +48,7 @@ case $1 in
 
  --version) shift
             cat $PGOPERATE_BASE/bin/VERSION
+            echo -e
             ;;
 
   --backup) shift
@@ -78,25 +75,9 @@ case $1 in
             $PGOPERATE_BASE/bin/remove_cluster.sh "$@"
             ;;  
 
-  --reinstate) shift
-            $PGOPERATE_BASE/bin/reinstate.sh "$@"
+  --standbymgr) shift
+            $PGOPERATE_BASE/bin/standbymgr.sh "$@"
             ;;  
-
-  --promote) shift
-            $PGOPERATE_BASE/bin/promote.sh "$@"
-            ;;  
-
-  --prepare-master) shift
-            $PGOPERATE_BASE/bin/prepare_master.sh "$@"
-            ;;  
-
-  --create-slave) shift
-            $PGOPERATE_BASE/bin/create_slave.sh "$@"
-            ;;  
-
-  --switchover) shift
-            $PGOPERATE_BASE/bin/switchover.sh "$@"
-            ;;
 
   --stop) shift
             [[ -z ${PGBASENV_ALIAS} ]] && echo "Set env for the cluster first." && exit 1

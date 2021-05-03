@@ -50,29 +50,14 @@ printheader() {
   GRE='\033[0;32m'
   NC='\033[0m'
 
-  echo -e "$GRE"
-  echo -e "----------------------------------------------------------------------------"
-  echo -e "[   $1"
-  echo -e "----------------------------------------------------------------------------"
-  echo -e "$NC"
+  if [[ $SILENT -eq 0 ]]; then
+    echo -e "$GRE"
+    echo -e "----------------------------------------------------------------------------"
+    echo -e "[   $1"
+    echo -e "----------------------------------------------------------------------------"
+    echo -e "$NC"
+  fi
 
-}
-
-
-create_root_sh() {
-  echo "#!/usr/bin/env bash
-
-source $PGOPERATE_BASE/lib/shared.lib
-source $PARAMETERS_FILE
-PG_BIN_HOME=$PG_BIN_HOME
-
-add_sudoers_rules
-create_service_file $PG_SERVICE_FILE
-start_pg_service $PG_SERVICE_FILE
-
-
-" > $PGSQL_BASE/scripts/root.sh 
-chmod 700 $PGSQL_BASE/scripts/root.sh 
 }
 
 
@@ -97,16 +82,6 @@ in_cluster_actions() {
 
   if [[ ! -z $REPLICA_USER_PASSWORD ]]; then
     echo "Cluster will be prepared for replication."
-    if [[ -z $REPLICATION_SLOT_NAME ]]; then
-       echo "WARNING: REPLICATION_SLOT_NAME parameter was not specified in parameters.conf. Default name $DEFAULT_REPLICATION_SLOT_NAME will be used."
-       REPLICATION_SLOT_NAME=$DEFAULT_REPLICATION_SLOT_NAME
-    fi
-
-    for rslot in $(echo $REPLICATION_SLOT_NAME | sed "s/,/ /g")
-    do
-      $PG_BIN_HOME/psql -p $PG_PORT -U $PG_SUPERUSER -d postgres -c "SELECT * FROM pg_create_physical_replication_slot('$rslot');" -t
-    done
-
     $PG_BIN_HOME/psql -p $PG_PORT -U $PG_SUPERUSER -d postgres -c "CREATE USER replica WITH REPLICATION PASSWORD '$REPLICA_USER_PASSWORD';" -t
   fi
 
@@ -123,10 +98,10 @@ in_cluster_actions() {
 
 
 manual_start_stop() {
-  $PG_BIN_HOME/pg_ctl start -D $PGSQL_BASE/data -l $PGSQL_BASE/log/server.log -o "--config_file=$PGSQL_BASE/etc/postgresql.conf"
+  eval "$PG_BIN_HOME/pg_ctl start -D $PGSQL_BASE/data -l $PGSQL_BASE/log/server.log -o \"--config_file=$PGSQL_BASE/etc/postgresql.conf\" $([[ $SILENT -eq 1 ]] && echo \">/dev/null 2>\&1\")"
   check_server
   [[ $? -gt 0 ]] && local res=1 || local res=0
-  $PG_BIN_HOME/pg_ctl stop -D $PGSQL_BASE/data -s --mode=smart
+  eval "$PG_BIN_HOME/pg_ctl stop -D $PGSQL_BASE/data -s --mode=smart $([[ $SILENT -eq 1 ]] && echo \">/dev/null 2>\&1\")"
   return $res
 }
 
@@ -136,6 +111,7 @@ manual_start_stop() {
 
 ARGS="$@"
 
+SILENT=0
 PARAMS=""
 while (( "$#" )); do
   case "$1" in
@@ -148,6 +124,10 @@ while (( "$#" )); do
         help
         exit 1
       fi
+      ;;
+    --silent)
+        SILENT=1
+        shift
       ;;
     help) help
           exit 0
@@ -231,7 +211,7 @@ export PGSQL_BASE=$_SAVE_
 
 PG_BIN_HOME=$TVD_PGHOME/bin
 
-[[ -z $PGSQL_BASE ]] && echo "ERROR: PGSQL_BASE cannot be empty." && exit 1
+[[ -z $PGSQL_BASE ]] && echo "ERROR: PGSQL_BASE must be set." && exit 1
 
 printheader "Creating directories in $PGSQL_BASE"
 if [[ -d $PGSQL_BASE ]]; then
@@ -259,17 +239,20 @@ update_db_params
 minimize_conf_file $PGSQL_BASE/etc/postgresql.conf
 
 printheader "Manually testing new cluster"
-manual_start_stop
-if [[ $? -gt 0 ]]; then
+if [[ $SILENT -eq 1 ]]; then
+  manual_start_stop >/dev/null
+  RC=$?
+else
+  manual_start_stop
+  RC=$?
+fi
+if [[ $RC -gt 0 ]]; then
   error "Manual test failed, cluster fails to start."
   exit 1
 fi
 
 printheader "Generating $PGSQL_BASE/scripts/start.sh."
 generate_manual_start_script
-
-printheader "Generating $PGSQL_BASE/scripts/root.sh file."
-create_root_sh
 
 printheader "Adding entry into pgclustertab file."
 adding_entry_in_pgtab
@@ -283,20 +266,32 @@ printheader "Starting cluster with pgoperated daemon process."
 # Release lock, because pgsetenv will require this lock.
 exec 7>&-
 pgsetenv $PG_CLUSTER_ALIAS
-$PGOPERATE_BASE/bin/control.sh start
-[[ $? -gt 0 ]] && exit 1
+if [[ $SILENT -eq 1 ]]; then
+  $PGOPERATE_BASE/bin/control.sh start >/dev/null
+  RC=$?
+else
+  $PGOPERATE_BASE/bin/control.sh start
+  RC=$?
+fi
+[[ $RC -gt 0 ]] && exit 1
 
 printheader "Executing in database actions."
-in_cluster_actions
+if [[ $SILENT -eq 1 ]]; then
+  in_cluster_actions >/dev/null
+else
+  in_cluster_actions
+fi
 
 
-echo -e
-echo "Cluster created and ready to use."
-echo -e
-echo "Execute now pgsetenv in current shell to source new database alias."
+if [[ $SILENT -eq 0 ]]; then
+  echo -e
+  echo "Cluster created and ready to use."
+  echo -e
+  echo "Execute now pgsetenv in current shell to source new database alias."
 
+  echo -e "\nLogfile of this execution: $LOGFILE\n"
+fi
 
-echo -e "\nLogfile of this execution: $LOGFILE\n"
 exit 0
 
 } 2>&1 | tee -a $LOGFILE
