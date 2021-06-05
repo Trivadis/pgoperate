@@ -65,6 +65,10 @@ source $PARAMETERS_FILE
 [[ ! -f $PGOPERATE_BASE/lib/shared.lib ]] && echo "Cannot read $PGOPERATE_BASE/lib/shared.lib file." && exit 1
 source $PGOPERATE_BASE/lib/shared.lib
 
+if [[ $DISABLE_BACKUP_SCRIPTS == "yes" ]]; then
+  echo "INFO: Backup/recovery disabled by DISABLE_BACKUP_SCRIPTS variable."
+  exit 0
+fi
 
 # Define log file
 prepare_logdir

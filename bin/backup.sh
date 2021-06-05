@@ -104,6 +104,11 @@ PARAMETERS_FILE=$PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf
 source $PARAMETERS_FILE
 source $PGOPERATE_BASE/lib/shared.lib
 
+if [[ $DISABLE_BACKUP_SCRIPTS == "yes" ]]; then
+  echo "INFO: Backup/recovery disabled by DISABLE_BACKUP_SCRIPTS variable."
+  exit 0
+fi
+
 # Define log file
 prepare_logdir
 declare -r LOGFILE="$PGSQL_BASE/log/tools/$(basename $0)_$(date +"%Y%m%d_%H%M%S").log"

@@ -1435,7 +1435,7 @@ elif [[ $MODE == "REINSTATE" ]]; then
 
 elif [[ $MODE == "SHOW_STATUS" ]]; then
 
-  list_db $SHOW_CONFIG_MODE
+  list_db $SHOW_STATUS_MODE
   RC=$?
 
 

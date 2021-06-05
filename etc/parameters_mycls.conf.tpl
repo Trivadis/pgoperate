@@ -96,6 +96,9 @@ MINIMIZE_CONF_FILE=no
 # Backup related parameters
 ###########################
 
+# If third party backup tools will be used. Then disable default backup/recovery scripts with this variable.
+DISABLE_BACKUP_SCRIPTS=no
+
 # Parameter to set default backup location of the cluster
 BACKUP_LOCATION=$PGSQL_BASE/backup
 
