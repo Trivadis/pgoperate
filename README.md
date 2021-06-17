@@ -187,7 +187,7 @@ If there will be special installation notes, they will be described in [Change L
 | **add_cluster.sh**      | Add existing Cluster to pgOperate environment.                         |
 | **remove_cluster.sh**   | Removes PostgreSQL cluster.                                            |
 | **standbymgr.sh**       | Script to add and manage standby cluster.                              |
-| **backup.sh**           | Backs up PostgreSQL cluster.                                             |
+| **backup.sh**           | Backs up PostgreSQL cluster.                                           |
 | **restore.sh**          | Restore PostgreSQL cluster.                                            |
 | **check.sh**            | Executes different monitoring checks.                                  |
 | **pgoperated**          | The main daemon script of the pgOperate.                               |
@@ -398,7 +398,7 @@ After the upgrade, rename controlfile in old home. It will prevent the cluster f
 mv $PGSQL_BASE/data/global/pg_control $PGSQL_BASE/data/global/pg_control.old
 ```
 
-Now replace directories:
+Replace directories:
 ```
 mv $PGSQL_BASE/data $PGSQL_BASE/data_old
 mv $PGSQL_BASE/data_new $PGSQL_BASE/data
@@ -452,7 +452,9 @@ If it is set to `UP`, then daemon will try to keep the cluster up and running, i
 
 The commands `pgoperate --start` and `pgoperate --stop` can be used to start or stop the cluster manually. If `AUTOSTART` for the current cluster set to `YES`, then these commands will signal daemon to start or stop the claster. If `AUTOSTART` is set to any other values, then local commands will be used to start or stop the cluster.
 
+pgoperated can automatically failover the monitored instance after `FAILCOUNT` failed attempts to restart it. The target for the failover will be next available and healthy standby with lowest node number. To see node numbers use `pgoperate --standbymgr --status`. To enable this behaviour `AUTOFAILOVER` parameter must be set to `yes`, which is default value.
 
+After failover will be initiated, old master will be left in `REINSTATE` state. If there will be attempt to start it using `pgoperate --start` or automatically by pgoperated, then reintate will be tried.
 
 
 ## About parameters_\<alias\>.conf
@@ -493,12 +495,15 @@ Parameters:
 | **MINIMIZE_CONF_FILE**       | `no`                     | If set to "yes" then all commented parameters will be removed from postgresql.conf          |
 | **PG_START_SCRIPT**       |                      | Custom script to start the cluster. If defined, then it will be used to start the cluster.                                             |
 | **PG_STOP_SCRIPT**       |                      | Custom script to stop the cluster. If defined, then it will be used to stop the cluster.                                             |
+| **DISABLE_BACKUP_SCRIPTS**       | `no`                     | If third party backup tools will be used. Then disable default backup/recovery scripts with this variable.                                             |
 | **BACKUP_LOCATION**       | `$PGSQL_BASE/backup`                     | Directory to store backup files.                                             |
 | **BACKUP_REDUNDANCY**     | `5`                                      | Backup redundancy. Count of backups to keep.                                                 |
 | **BACKUP_RETENTION_DAYS**  | `7`                                      | Backup retention in days. Keeps backups required to restore so much days back.  This parameter, if set, overrides BACKUP_REDUNDANCY.                                                |
 | **MASTER_HOST**           |                                          | !DEPRECATED! Replication related. The name or ip address of the master cluster.           |
 | **MASTER_PORT**           |                                          | !DEPRECATED! Replication related. The PORT of the master cluster. If not specified then `$PGPORT` will be used.           |
 | **REPLICATION_SLOT_NAME** | `slave001, slave002, slave003  | !DEPRECATED! Replication related. Replication slot names to be created in master cluster. More than one replication slot separated by comma can be specified.|
+| **AUTOFAILOVER**           | `yes`                                   | Enable automatic faiover in standby configuration.           |
+| **FAILCOUNT**           | `3`                                   | If automatic failover enabled, then define after how meny failed attempts to start the instance to initiate failover.           |
 | **REPLICA_USER_PASSWORD** |                                          | Replication related. Password for user REPLICA which will be created on master site. Slave will use this credential to connect to master.|
 
 
@@ -715,6 +720,10 @@ Available options:
  --status                             Show current configuration and status.
  --sync-config                        Synchronize config with real-time information and distribute on all configured nodes.
  --add-standby --target <hostname>    Add new standby cluster on spevified host. Must be executed on master host.
+ --set-sync --target <hostname> [--bidirectional]  Set target standby to synchronous replication mode.  
+ --set-async --target <hostname> [--bidirectional]  Set target standby to asynchronous replication mode.
+                                      If bidirectional option specified, then current master will be added as synchronous 
+                                      standby to the target standbys configuration. To maintain synchronous replication after switchover.
  --switchover [--target <hostname>]   Switchover to standby. If target was not provided, then local host will be a target.
  --failover [--target <hostname>]     Failover to standby. If target was not provided, then local host will be a target.
                                         Old master will be stopped and marked as REINSTATE in configuration.
@@ -725,7 +734,7 @@ Available options:
 
 ```
 
-Prerequsite for `standbymgr` are:
+Prerequisites for `standbymgr` are:
 * pgBaseEnv and pgOperate must be installed on remote host
 * Passwordless ssh connection must be configured between all members of the configuration
 
@@ -734,153 +743,6 @@ All commands except `--add-standby` can be executed on any host of the configura
 During switchover, last checkpoint location and next XID will be compared between master and target standby. If there will be risk of data loss, then switchover will not happen. In such cases the reason of the lag must be detected and eliminated or `--failover` option must be used to execute failover.
 
 After failover previous master will be stopped if accessable and its status will be set to REINSTATE. You must execute `--reinstate` on this cluster to convert it to new standby.
-
-
-
-## prepare_master.sh
----
-
-Script to create replica user and configure PostgreSQL as master site.
-
-All these commands will be executed by `create_cluster.sh`, this script can be used in some scenarios when standby fails to connect to master,
-then it is good to execute this script to be sure that all replication parameters and objects are in place.
-
-It will check `track_commit_timestamp` parameter, if it is set to 'on'. If this parameter is 'on', then script will just reload configuration.
-If `track_commit_timestamp` parameter is not set, then it will be set to 'on' and cluster will be restarted!
-
-It will set next parameters in `$PGSQL_BASE/etc/postgresql.conf`
-```
-wal_level             to "replica"
-max_wal_senders       to "10"
-max_replication_slots to "10"
-```
-
-It will check and update `$PGSQL_BASE/etc/pg_hba.conf` file to allow replica user to connect over TCP with `scram-sha-256` encrypted password over replication protocol.
-
-It will create replication slot(s) listed in `$REPLICATION_SLOT_NAME`.
-
-It will create `REPLICA` user with replication permission and password `$REPLICA_USER_PASSWORD`.
-
-Execute as postgres:
-```
-pgoperate --prepare-master
-```
-
-
-
-## create_slave.sh
----
-
-Script to create standby PostgreSQL cluster.
-
-This script requires `MASTER_HOST`, `REPLICATION_SLOT_NAME` and `REPLICA_USER_PASSWORD` parameters to be set in `$PGSQL_BASE/etc/parameters_<alias>.conf` file.
-
-Note that, if `REPLICATION_SLOT_NAME` has more than one slot, then first one will be used in master connection string in `recovery.conf` or postgresql.conf file.
-
-Script will set parameter `hot_standby` to "on" in `postgresql.conf`.
-
-It will also set master related parameters, as a preparation for possible master role.
-
-`pg_basebackup` utility will be used to duplicate all data files from master site.
-
-It will also update `recovery.conf` or `postgresql.conf` file with related parameters.
-
-If `$PGDATA` will not be empty, then error message will displayed. `$PGDATA` must be emptied or `--force` option must be used.
-
-
-Execute as postgres:
-```
-sudo systemctl stop postgresql-<alias>
-rm -Rf $PGDATA/*
-pgoperate --create-slave
-
-- or -
-
-pgoperate --create-slave --force
-
-```
-
-At the end, script will check the status of WAL receiver, if it is "Streaming" then success message will be displayed.
-
-
-
-
-## promote.sh
----
-
-
-Can be executed to promote standby to master.
-
-Master status will be checked, if it is still running, then database will not be promoted.
-
-Can be used for Failover and Switchover operations.
-
-For Switchover:
-
-1. Stop master site:
-  `sudo systemctl stop postgresql-<alias>`
-2. Execute promote.sh on standby site
-  `pgoperate --promote`
-3. Start old master as new standby 
-  `pgoperate --reinstate`  
-  
-
-Execute as postgres:
-```
-pgoperate --promote
-```
-
-
-
-## reinstate.sh
----
-
-Script to start old primary as new standby server.
-   
-Script will try to start as standby in next order:
-
-1. Start old primary as new standby
-2. If it fails to sync with master, then sync with `pg_rewind`
-3. If it again fails then script will recreate standby from master if `-f` option was specified
-
-Available options:
-```
-    `-m <hostname>`   Master host. If not specified master host from parameters_<alias>.conf will be used.
-    `-f`              Force to recreate standby from master if everything else fails.
-    `-r`              Execute only `pg_rewind` to synchronize primary and standby.
-    `-d`              Recreate standby from master.
-```
-
-Execute as postgres:
-```
-pgoperate --reinstate -f
-```
-
-
-## switchover.sh
----
-
-With this script you can perform fully automatic switchover to standby.
-
-Script can be executed on master or standby site.
-
-If it will be executed on standby site, then script will identify master and execute on master site.
-
-If there is more than one standby configured then following rules will be used:
-1. If there is synchronous standby configured, then it will be used.
-2. Asynchronous standbys will be sorted by lag, the standby with smallest lag will be used.
-
-Available options:
-```
-    `-f`            Force to recreate new standby from scratch if old master will not be able to sync with new master.
-                    Check the help of the reinstate.sh script.
-```
-
-Execute as postgres:
-```
-pgoperate --switchover
-```
-
 
 
 ## backup.sh
@@ -927,10 +789,6 @@ Use `list` to show all backups:
 ```
 pgoperate --backup list
 ```
-
-
-
-
 
 
 ## restore.sh
@@ -991,11 +849,6 @@ You can also restore from `subdir` or by specifying `until_time`:
 ```
 pgoperate --restore backup_dir=/tmp/pgbackup from_subdir=4
 ```
-
-
-
-
-
 
 
 

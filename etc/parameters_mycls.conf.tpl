@@ -115,14 +115,12 @@ BACKUP_RETENTION_DAYS=7
 # Replication related parameters
 ################################
 
-# Master host name or IP
-MASTER_HOST=
+# Enable automatic faiover. Default is yes.
+AUTOFAILOVER=yes
 
-# Master port
-MASTER_PORT=
-
-# Replication slots to be created. Can be comma separated list.
-REPLICATION_SLOT_NAME="slave001, slave002, slave003"
+# If automatic failover enabled, then define after how meny failed attempts to start the instance to initiate failover.
+# Default is 3.
+FAILCOUNT=3
 
 # User replica will be created for replication purposes. This parameters defines its password.
 REPLICA_USER_PASSWORD=

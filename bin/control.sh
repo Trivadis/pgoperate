@@ -27,10 +27,13 @@ help() {
  
  With this script you can start and stop your instaces or check the status of the pgOperate daemon-process. 
  
- Argumants:
+ First argumant:
         start     Intended state of the instance will be changed to UP and pgoperated process will be woken up.
          stop     Intended state of the instance will be changed to DOWN and pgoperated process will be woken up.
 daemon-status     Check the status of the pgOperate daemon process (pgoperated).
+
+ Second argument:
+        force     Can be used to force some operations.
 
 "
 }
@@ -57,7 +60,7 @@ source $PGOPERATE_BASE/lib/shared.lib
 set_param() {
 local param="$1"
 local value="$2"
-local repval="$(grep -Ei "(^|#| )$param *=" $PARAMETERS_FILE)"
+local repval="$(grep -Ei "(^|#) *$param *=" $PARAMETERS_FILE)"
 
 if [[ ${#repval} -gt 0 ]]; then
   modifyFile $PARAMETERS_FILE rep "$param=$value" "${repval//[$'\n']}"
@@ -144,8 +147,15 @@ if [[ $1 == "start" ]]; then
         exit 1
      fi
   else
-     start_local
+     local_status=$($PGOPERATE_BASE/bin/standbymgr.sh --status --list | grep "|$(hostname -s)|" | cut -d"|" -f3)
      RC=$?
+     if [[ $RC -eq 0 && $local_status == "REINSTATE" && $2 != "force" ]]; then
+        echo "INFO: The cluster is in reinstate mode. Reinstate it first or user force option."
+        exit 1
+     else
+        start_local
+        RC=$?
+     fi
   fi
 
 

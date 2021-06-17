@@ -27,7 +27,7 @@ Available options:
 
   --version                Show version. 
   --stop                   Stop current cluster. (Signal will be sent to daemon and operation status received)
-  --start                  Start current cluster. (Signal will be sent to daemon and operation status received)
+  --start [force]          Start current cluster. (Signal will be sent to daemon and operation status received)
   --reload                 Reload all running clusters. (pg_ctl reload)
   --daemon-status          Check the status of the pgoperated.
   --create-cluster         Create new PostgreSQL Cluster
@@ -86,7 +86,7 @@ case $1 in
 
   --start) shift
             [[ -z ${PGBASENV_ALIAS} ]] && echo "Set env for the cluster first." && exit 1
-            $PGOPERATE_BASE/bin/control.sh start
+            $PGOPERATE_BASE/bin/control.sh start "$@"
             ;;
 
   --reload) shift

@@ -188,6 +188,9 @@ if [[ ! -f $INPUT_PARFILE ]]; then
   exit 1
 fi
 
+source $INPUT_PARFILE
+
+
 exit $RC
 
 } 2>&1 | tee -a $LOGFILE

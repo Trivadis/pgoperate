@@ -1,0 +1,3 @@
+\set QUIET 'on'
+set synchronous_commit=local;
+

@@ -1,4 +1,14 @@
 
+## 3.0
+
+New features added in this release:
+* pgoperated now able to initiate failover of the master instance after predefined failed attempts to restart the instance.
+* New parameters in conf file, AUTOFAILOVER and FAILCOUNT. If AUTOFAILOVER enabled then after FAILCOUNT attempts failover will be initiated. Failover target will be next healthy and available standby with lowest node number. Old primary will be left in REINSTATE status. Pgoperated will try to reinstate old master periodically.
+* New options added to standbymgr, --set-sync and --set-async. We can easily set any target standby to synchronous replication mode or to asynchronous mode. The --status option will also output sync mode of the standby.
+* New parameter DISABLE_BACKUP_SCRIPTS to disable all backup/restore related scripts if any third party backup tool will be used.
+* Other minor changes and improvement.
+
+
 ## 2.0
 
 Major change in this version is a new script `standbymgr.sh` which replaces all previous standby management scrips `prepare_master.sh`, `promote.sh`, `reinstate.sh` and `switchover.sh`.

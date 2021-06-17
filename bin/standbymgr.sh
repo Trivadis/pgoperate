@@ -32,6 +32,10 @@ help() {
  --status                             Show current configuration and status.
  --sync-config                        Synchronize config with real-time information and distribute on all configured nodes.
  --add-standby --target <hostname>    Add new standby cluster on spevified host. Must be executed on master host.
+ --set-sync --target <hostname> [--bidirectional]  Set target standby to synchronous replication mode.  
+ --set-async --target <hostname> [--bidirectional]  Set target standby to asynchronous replication mode.
+                                      If bidirectional option specified, then current master will be added as synchronous 
+                                      standby to the target standbys configuration. To maintain synchronous replication after switchover.
  --switchover [--target <hostname>]   Switchover to standby. If target was not provided, then local host will be a target.
  --failover [--target <hostname>]     Failover to standby. If target was not provided, then local host will be a target.
                                         Old master will be stopped and marked as REINSTATE in configuration.
@@ -47,6 +51,13 @@ help() {
 # set -xv
 
 declare -r SCRIPTDIR="$( cd "$(dirname "$0")" ; pwd -P )"
+
+# Execution ID. Can be used for debugging.
+declare -r EXECID=$((1 + $RANDOM % 9999))
+
+# Set custom .psqlrc file
+export PSQLRC=$PGOPERATE_BASE/bin/.psqlrc
+
 
 GRE='\033[0;32m'
 RED='\033[0;31m'
@@ -114,6 +125,17 @@ else
 fi
 }
 
+exec_pg() {
+  local cmd="$1"
+  local db="$2"
+  [[ -z $db ]] && db=postgres
+  # output must be declared separately or return code from subshell will not be captured
+  local output
+  output="$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d $db -c "$1" -t 2>&1)"
+  local res=$?
+  echo "$output"
+  return $res
+}
 
 
 update_db_params() {
@@ -184,19 +206,6 @@ db_copy_to_standbys() {
       fi
     fi
   done
-}
-
-
-exec_pg() {
-  local cmd="$1"
-  local db="$2"
-  [[ -z $db ]] && db=postgres
-  # output must be declared separately or return code from subshell will not be captured
-  local output
-  output="$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d $db -c "$1" -t 2>&1)"
-  local res=$?
-  echo "$output"
-  return $res
 }
 
 
@@ -306,6 +315,17 @@ sync_config() {
   return 1
 }
 
+get_sync_standbys() {
+  local master=$1
+  
+  if [[ $LOCAL_HOST == $master ]]; then
+    local sync_standbys=$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PGPORT -d postgres -At -c "select string_agg(application_name||':'||sync_state, ',') from pg_stat_replication" 2>&1)
+    echo "$sync_standbys"
+  else
+    execute_remote $master $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --exec --payload \"get_sync_standbys $master\""
+  fi
+
+}
 
 list_db() {
   local mode=$1
@@ -318,9 +338,15 @@ list_db() {
   fi
 
   local actual_status=$(get_actual_status_from_nodes)
+  
+  if [[ $mode != "list" ]]; then
+     local master=$(echo "$actual_status" | grep MASTER | cut -d"|" -f1)
+     local sync_standbys=$(get_sync_standbys $master)
+  fi
 
+  local mode
   [[ ! -d $REPCONF ]] && return
-  [[ $mode != "list" ]] && printf "%-11s %-20s %-15s %-5s %-10s %12s %15s %16s\n" "Node_number" "Node_name" "Role" "State" "WAL_receiver" "Apply_lag_MB" "Transfer_lag_MB" "Transfer_lag_Min"
+  [[ $mode != "list" ]] && printf "%-11s %-20s %-15s %9s %-5s %-10s %12s %15s %16s\n" "Node_number" "Node_name" "Role" "Mode" "State" "WAL_receiver" "Apply_lag_MB" "Transfer_lag_MB" "Transfer_lag_Min"
   for row in $(ls $REPCONF); do
      nodenum="$(cat $REPCONF/$row/1_id)"
      nodename="$(cat $REPCONF/$row/2_host)"
@@ -334,7 +360,9 @@ list_db() {
      tr_lag_min=$(echo $stats | cut -d"|" -f7)
     
      if [[ $mode != "list" ]]; then 
-        printf "%-11s %-20s %-15s %-5s %-10s %12s %15s %16s\n" "$nodenum" "$nodename" "$role" "$cls_status" "$wal_receiver" "$apply_lag_mb" "$tr_lag_mb" "$tr_lag_min"
+        [[ ",$sync_standbys," =~ ,site_${nodename}: ]] && mode=$(echo -e "${sync_standbys//,/\\n}" | grep "site_${nodename}:" | cut -d: -f2)
+        [[ $role != STANDBY ]] && mode=""
+        printf "%-11s %-20s %-15s %9s %-5s %-10s %12s %15s %16s\n" "$nodenum" "$nodename" "$role" "$mode" "$cls_status" "$wal_receiver" "$apply_lag_mb" "$tr_lag_mb" "$tr_lag_min"
      else
         echo "$nodenum|$nodename|$role|$cls_status|$wal_receiver|$apply_lag_mb|$tr_lag_mb|$tr_lag_min"
      fi
@@ -484,6 +512,19 @@ copy_params_file_to_remote() {
 }
 
 
+set_autostart() {
+local param="AUTOSTART"
+local value="$1"
+local repval="$(grep -Ei "(^|#) *$param *=" $PARAMETERS_FILE)"
+
+if [[ ${#repval} -gt 0 ]]; then
+  modifyFile $PARAMETERS_FILE rep "$param=$value" "${repval//[$'\n']}"
+else
+  modifyFile $PARAMETERS_FILE add "$param=$value"
+fi
+}
+
+
 create_replica_user() {
   local output="$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d postgres -c "select true from pg_roles where rolname='replica'" -t 2>&1)"
   if [[ -z $output ]]; then
@@ -623,7 +664,7 @@ create_slave() {
    check_replication_parameters
 
    $PGOPERATE_BASE/bin/control.sh stop >/dev/null
-
+   #$PG_BIN_HOME/pg_ctl stop -D ${PGDATA} -s -m fast >/dev/null
    check_local_dir $PGDATA
    RC=$?
    if [[ $RC -gt 0 ]]; then
@@ -638,26 +679,36 @@ create_slave() {
       return 1
    fi
 
-   if [[ $TVD_PGVERSION -ge 12 ]]; then
-     local conninfo=$(grep primary_conninfo $PGSQL_BASE/data/postgresql.auto.conf | grep -oE "'.+'" | tail -1)
-     [[ ! -z $BACKUP_LOCATION ]] && set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'"
-     SET_CONF_PARAM_IN_CLUSTER="NO"
-     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_conninfo "$conninfo"
-     SET_CONF_PARAM_IN_CLUSTER="YES"
-     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_slot_name "'slot_${LOCAL_HOST}'"
-     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_timeline "'latest'"
-     touch $PGSQL_BASE/data/standby.signal
-   else
-     [[ ! -z $BACKUP_LOCATION ]] && echo "restore_command = 'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'" >> $PGSQL_BASE/data/recovery.conf
-     echo "primary_slot_name = 'slot_${LOCAL_HOST}'" >> $PGSQL_BASE/data/recovery.conf
-     echo "recovery_target_timeline = 'latest'" >> $PGSQL_BASE/data/recovery.conf
-   fi
 
    #echo "Updating pg_hba.conf file"
    update_pg_hba
 
    #echo "Starting slave."
-   $PGOPERATE_BASE/bin/control.sh start >/dev/null
+   $PGOPERATE_BASE/bin/control.sh start force >/dev/null
+   #$PG_BIN_HOME/pg_ctl start -D ${PGDATA} -l $PGSQL_BASE/log/server.log -s -o "-p ${PGPORT} --config_file=$PGSQL_BASE/etc/postgresql.conf" >/dev/null
+
+
+   local conninfo
+   if [[ $TVD_PGVERSION -ge 12 ]]; then
+     [[ ! -z $BACKUP_LOCATION && $DISABLE_BACKUP_SCRIPTS == "no" ]] && set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'"
+     conninfo=$(grep primary_conninfo $PGSQL_BASE/data/postgresql.auto.conf | grep -oE "'.+'" | tail -1)
+     conninfo="$(eval "echo $conninfo") application_name=site_${LOCAL_HOST}"
+     #SET_CONF_PARAM_IN_CLUSTER="NO"
+     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_conninfo "'$conninfo'"
+     #SET_CONF_PARAM_IN_CLUSTER="YES"
+     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_slot_name "'slot_${LOCAL_HOST}'"
+     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_timeline "'latest'"
+     touch $PGSQL_BASE/data/standby.signal
+   else
+     [[ ! -z $BACKUP_LOCATION && $DISABLE_BACKUP_SCRIPTS == "no" ]] && echo "restore_command = 'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'" >> $PGSQL_BASE/data/recovery.conf
+     conninfo=$(grep primary_conninfo $PGSQL_BASE/data/recovery.conf | grep -oE "'.+'" | tail -1)
+     conninfo="$(eval "echo $conninfo") application_name=site_${LOCAL_HOST}"
+     set_conf_param "$PGSQL_BASE/data/recovery.conf" primary_conninfo "'$conninfo'"
+     echo "primary_slot_name = 'slot_${LOCAL_HOST}'" >> $PGSQL_BASE/data/recovery.conf
+     echo "recovery_target_timeline = 'latest'" >> $PGSQL_BASE/data/recovery.conf
+   fi
+
+   $PG_BIN_HOME/pg_ctl reload -D ${PGDATA} -s
 
    echo "Standby created. Checking status ..."
    local i=0
@@ -716,7 +767,7 @@ prepare_master() {
     if [[ $FORCE -eq 1 ]]; then
        $PGOPERATE_BASE/bin/control.sh stop >/dev/null
        RC1=$?
-       $PGOPERATE_BASE/bin/control.sh start >/dev/null
+       $PGOPERATE_BASE/bin/control.sh start force >/dev/null
        RC2=$?
     else
       echo "Cluster must be restarted."
@@ -840,8 +891,6 @@ add_slave() {
 
 
 
-
-
 # Values for REWIND and DUPLICATE can be 0 or 1
 reinstate() {
   local NEW_MASTER_HOST=$1
@@ -849,6 +898,19 @@ reinstate() {
   local DUPLICATE=$3
 
   local REPLICATION_SLOT_NAME="slot_${LOCAL_HOST}"
+
+  on_exit() {
+     local SET_AUTOSTART_TO=$1
+     if [[ ! -z $SET_AUTOSTART_TO ]]; then
+       set_autostart $SET_AUTOSTART_TO
+     fi
+  }
+
+  if [[ $AUTOSTART =~ yes|YES ]]; then
+     SET_AUTOSTART_TO=YES
+     trap 'on_exit $SET_AUTOSTART_TO' EXIT
+     set_autostart NO
+  fi
 
   local PGPORT=$PGPORT
   [[ -z $PGPORT ]] && PGPORT=$PG_PORT
@@ -865,8 +927,8 @@ reinstate() {
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" hot_standby "on"
      grep -q "#replication#" $PGSQL_BASE/etc/pg_hba.conf
      [[ $? -gt 0 ]] && echo -e "# For replication. Connect from remote hosts. #replication#\nhost    replication     replica      0.0.0.0/0      scram-sha-256" >> $PGSQL_BASE/etc/pg_hba.conf
-     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_conninfo "'user=replica password=$REPLICA_USER_PASSWORD host=$NEW_MASTER_HOST port=$PGPORT'"
-     set_conf_param "$PGSQL_BASE/data/postgresql.auto.conf" primary_conninfo "'user=replica password=$REPLICA_USER_PASSWORD host=$NEW_MASTER_HOST port=$PGPORT'"
+     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_conninfo "'user=replica password=$REPLICA_USER_PASSWORD host=$NEW_MASTER_HOST port=$PGPORT application_name=site_${LOCAL_HOST}'"
+     set_conf_param "$PGSQL_BASE/data/postgresql.auto.conf" primary_conninfo "'user=replica password=$REPLICA_USER_PASSWORD host=$NEW_MASTER_HOST port=$PGPORT application_name=site_${LOCAL_HOST}'"
      [[ ! -z $BACKUP_LOCATION ]] && set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_slot_name "'${REPLICATION_SLOT_NAME}'"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_timeline "'latest'"
@@ -876,7 +938,7 @@ reinstate() {
   create_recovery_file(){
     echo "
 standby_mode = 'on'
-primary_conninfo = 'user=replica password=''$REPLICA_USER_PASSWORD'' host=$NEW_MASTER_HOST port=$PGPORT'
+primary_conninfo = 'user=replica password=''$REPLICA_USER_PASSWORD'' host=$NEW_MASTER_HOST port=$PGPORT application_name=site_${LOCAL_HOST}'
 primary_slot_name = '${REPLICATION_SLOT_NAME}'
 recovery_target_timeline = 'latest'
 " > $PGSQL_BASE/data/recovery.conf
@@ -897,6 +959,7 @@ do_rewind(){
   # fi
    local RC1 RC2
    $PGOPERATE_BASE/bin/control.sh stop >/dev/null
+   #$PG_BIN_HOME/pg_ctl stop -D ${PGDATA} -s -m fast >/dev/null
    RC1=$?
    $PG_BIN_HOME/pg_rewind --target-pgdata=$PGSQL_BASE/data --source-server="host=$NEW_MASTER_HOST port=$PGPORT user=$PG_SUPERUSER dbname=postgres connect_timeout=5" -P
    if [[ $TVD_PGVERSION -ge 12 ]]; then
@@ -904,7 +967,8 @@ do_rewind(){
    else
      create_recovery_file
    fi
-   $PGOPERATE_BASE/bin/control.sh start >/dev/null
+   $PGOPERATE_BASE/bin/control.sh start force >/dev/null
+   #$PG_BIN_HOME/pg_ctl start -D ${PGDATA} -l $PGSQL_BASE/log/server.log -s -o "-p ${PGPORT} --config_file=$PGSQL_BASE/etc/postgresql.conf" >/dev/null
    RC2=$?
    return $((RC1+RC2))
 }
@@ -949,19 +1013,21 @@ fi
 pgsetenv $PGBASENV_ALIAS
 
 
-if [[ $TVD_PGIS_STANDBY == "YES" ]]; then
-  echo "Cluster was in standby mode."
-  echo "Staring the Cluster."
-  $PGOPERATE_BASE/bin/control.sh start
-  return $?
+#if [[ $TVD_PGIS_STANDBY == "YES" ]]; then
+#  echo "Cluster was in standby mode."
+#  echo "Staring the Cluster."
+#  $PGOPERATE_BASE/bin/control.sh start
+#  return $?
 
-elif [[ $TVD_PGIS_STANDBY != "YES" ]]; then
+#elif [[ $TVD_PGIS_STANDBY != "YES" ]]; then
+
   if [[ $TVD_PGVERSION -ge 12 ]]; then
     prepare_for_standby
   else
     create_recovery_file
   fi
-  $PGOPERATE_BASE/bin/control.sh start
+  $PGOPERATE_BASE/bin/control.sh start force
+  #$PG_BIN_HOME/pg_ctl start -D ${PGDATA} -l $PGSQL_BASE/log/server.log -s -o "-p ${PGPORT} --config_file=$PGSQL_BASE/etc/postgresql.conf"
   [[ $? -gt 0 ]] && return 1
   sleep 5
   repstatus=$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PGPORT -d postgres -At -c "select status from pg_stat_wal_receiver where conninfo like '%host=$NEW_MASTER_HOST%'")
@@ -1003,10 +1069,9 @@ elif [[ $TVD_PGIS_STANDBY != "YES" ]]; then
      return 1
   fi
 
-else
-  return 1
-
-fi
+#else
+#  return 1
+#fi
 
 
 }
@@ -1060,6 +1125,100 @@ remove_host() {
 
 }
 
+
+
+add_host_to_sync_list() {
+  local HOST=$1
+  local RC1 RC2
+
+  local final_list
+
+     local current_list="$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d postgres -c "show synchronous_standby_names" -t | xargs 2>&1)"
+
+     if [[ -z $current_list ]]; then
+        final_list="site_${HOST}"
+     else
+        current_list=$(eval "echo $current_list")
+        if [[ ",${current_list}," =~ ,site_${HOST}, ]]; then
+           final_list="${current_list}"
+        else
+           final_list="${current_list},site_${HOST}"
+        fi
+     fi
+     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" synchronous_commit "on"
+
+  set_conf_param "$PGSQL_BASE/etc/postgresql.conf" synchronous_standby_names "'$final_list'"
+  RC1=$?
+  $PG_BIN_HOME/pg_ctl reload -D ${PGDATA} -s
+  RC2=$?
+
+  return $((RC1+RC2))
+
+}
+
+
+rm_host_from_sync_list() {
+  local HOST=$1
+
+  local RC1 RC2
+  local final_list="$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d postgres -c "select trim(regexp_replace(setting, 'site_${HOST}(\$| *,)', ''),',') from pg_settings where name='synchronous_standby_names'" -t | xargs 2>&1)"
+
+  set_conf_param "$PGSQL_BASE/etc/postgresql.conf" synchronous_standby_names "'$final_list'"
+  RC1=$?
+  $PG_BIN_HOME/pg_ctl reload -D ${PGDATA} -s
+  RC2=$?
+
+  return $((RC1+RC2))
+
+}
+
+
+set_syncasync() {
+  local REMOTE_HOST=$1
+  local RC1 RC2
+
+  local db_master=$(db_get_master)
+  local db_master_host=$(echo $db_master | cut -d"|" -f2)
+
+  local mode
+  [[ $MODE == "SETASYNC" ]] && mode="--set-async" || mode="--set-sync"
+
+  if [[ $db_master_host != $LOCAL_HOST ]]; then
+     execute_remote $db_master_host $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh $mode --target $REMOTE_HOST"
+     RC=$?
+     return $RC
+  fi
+
+  local final_list
+  
+  if [[ $MODE == "SETSYNC" ]]; then
+    
+    add_host_to_sync_list $REMOTE_HOST
+    RC1=$?
+    
+    if [[ $SYNCASYNC_MODE == "BIDIRECTIONAL" ]]; then
+       execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --exec --payload \"add_host_to_sync_list $LOCAL_HOST\""
+       RC2=$?
+    fi
+
+  else
+
+    rm_host_from_sync_list $REMOTE_HOST
+    RC1=$? 
+
+    if [[ $SYNCASYNC_MODE == "BIDIRECTIONAL" ]]; then
+       execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --exec --payload \"rm_host_from_sync_list $LOCAL_HOST\""
+       RC2=$?
+    fi
+
+  fi
+
+  [[ $RC1 -gt 0 ]] && echo "ERROR: Failed to set synchronous_standby_names on master site $LOCAL_HOST"
+  [[ $RC2 -gt 0 ]] && echo "ERROR: Failed to set synchronous_standby_names on standby site $REMOTE_HOST"
+
+  return $((RC1+RC2))
+  
+}
 
 
 switchover_to() {
@@ -1126,7 +1285,7 @@ switchover_to() {
 
     if [[ $check_passed == "NO" ]]; then
        echo "Use failover. Now starting master again."
-       $PGOPERATE_BASE/bin/control.sh start >/dev/null
+       $PGOPERATE_BASE/bin/control.sh start force >/dev/null
        return 1
     fi
 
@@ -1151,6 +1310,7 @@ switchover_to() {
   reinstate $REMOTE_HOST
   RC=$?
   
+
   $0 --sync-config
 
   return $RC
@@ -1322,8 +1482,11 @@ while [[ $1 ]]; do
  elif [[ "$1" == --set-reinstate ]]; then MODE="SET_REINSTATE" && shift
  elif [[ "$1" == --reinstate ]]; then MODE="REINSTATE" && shift
  elif [[ "$1" == --switchover ]]; then MODE="SWITCHOVER" && shift
+ elif [[ "$1" == --set-async ]]; then MODE="SETASYNC" && shift
+ elif [[ "$1" == --set-sync ]]; then MODE="SETSYNC" && shift
  elif [[ "$1" == --check ]]; then MODE="CHECK" && shift
  elif [[ "$1" == --failover ]]; then MODE="FAILOVER" && shift
+ elif [[ "$1" == --bidirectional ]]; then SYNCASYNC_MODE="BIDIRECTIONAL" && shift
  elif [[ "$1" == --exec ]]; then MODE="EXEC" && shift
  elif [[ "$1" == --switch-master ]]; then MODE="SWITCH_MASTER" && shift
  elif [[ "$1" == --target ]]; then shift && ca $1 && INPUT_SLAVE_HOST=$1 && shift
@@ -1335,6 +1498,7 @@ while [[ $1 ]]; do
    exit 1 
  fi
 done
+
 
 # Script main part begins here. Everything in curly braces will be logged in logfile
 {
@@ -1415,6 +1579,13 @@ elif [[ $MODE == "SWITCHOVER" ]]; then
   switchover_to $INPUT_SLAVE_HOST
   RC=$?
 
+elif [[ $MODE == "SETASYNC" || $MODE == "SETSYNC" ]]; then
+
+  if [[ -z $INPUT_SLAVE_HOST ]]; then
+     INPUT_SLAVE_HOST=$LOCAL_HOST
+  fi
+  set_syncasync $INPUT_SLAVE_HOST
+  RC=$?
 
 elif [[ $MODE == "FAILOVER" ]]; then
 

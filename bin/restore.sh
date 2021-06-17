@@ -50,6 +50,9 @@ echo "
 
 }
 
+# Set custom .psqlrc file
+export PSQLRC=$PGOPERATE_BASE/bin/.psqlrc
+
 declare -r SCRIPTDIR="$( cd "$(dirname "$0")" ; pwd -P )"
 
 [[ -z $PGBASENV_ALIAS ]] && error "Set the alias for the current cluster first." && exit 1

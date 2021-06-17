@@ -88,39 +88,84 @@ fi
   trap rm_PID_FILE SIGTERM
   trap rm_PID_FILE EXIT
   
+  declare -a FAIL_COUNT
+
   source $HOME/.pgbasenv_profile
   while true; do
     unset clustertab
     clustertab="$(pgup --list)"
+
     while read pfile; do
       pfile_base=$(basename $pfile) && pfile_base=${pfile_base//parameters_/}
       ALIAS=${pfile_base//.conf/}
       PIPE_FILE=/tmp/.pgoperate.${ALIAS}
       tab=$(echo "$clustertab" | grep "^${ALIAS};")
     (
+      echo "" > /tmp/pgoperated_subshell.tmp
+      pgsetenv $ALIAS
       if [[ ! -z $tab ]]; then
         PGPORT=$(echo $tab | cut -d";" -f4)
         PGDATA=$(echo $tab | cut -d";" -f7)
         BINHOME=$(echo $tab | cut -d";" -f9)
         STATUS=$(echo $tab | cut -d";" -f3)
         source $PGOPERATE_BASE/etc/parameters_${ALIAS}.conf
+        [[ -z $FAILCOUNT ]] && v_fail_count=3 || v_fail_count=$FAILCOUNT
+        [[ -z $AUTOFAILOVER ]] && v_autofailover="yes" || v_autofailover=$AUTOFAILOVER
         [[ -z $PGPORT ]] && PGPORT=$PG_PORT
         if [[ $AUTOSTART == "YES" ]]; then
           if [[ $INTENDED_STATE == "UP" && $STATUS == "DOWN" ]]; then
-            if [[ -z $PG_START_SCRIPT ]]; then
-              $BINHOME/bin/pg_ctl start -D ${PGDATA} -l $PGSQL_BASE/log/server.log -s -o "-p ${PGPORT} --config_file=$PGSQL_BASE/etc/postgresql.conf $ADDITIONAL_START_OPTIONS" -w -t 300
-              RC=$?
-            else
-              $PG_START_SCRIPT
-              RC=$?
-            fi
-            if [[ $RC -eq 0 ]]; then
-              echo "$(date): Cluster ${ALIAS} successfully started." >> $LOG_FILE
-              [[ -p $PIPE_FILE ]] && echo "SUCCESS" >$PIPE_FILE
-            else
-              echo "$(date): Cluster ${ALIAS} startup failed." >> $LOG_FILE
-              [[ -p $PIPE_FILE ]] && echo "FAIL" >$PIPE_FILE
-            fi
+             
+            local_status=$($PGOPERATE_BASE/bin/standbymgr.sh --status --list | grep "|$(hostname -s)|" | cut -d"|" -f3)
+            RC=$?
+            if [[ $RC -eq 0 && $local_status == "REINSTATE" ]]; then
+                echo "$(date): Cluster ${ALIAS} will be reinstated now." >> $LOG_FILE
+                reinstate=$($PGOPERATE_BASE/bin/standbymgr.sh --reinstate)
+                if [[ $? -eq 0 ]]; then
+                   echo "$(date): ${ALIAS} Reinstate was successful." >> $LOG_FILE
+                   [[ -p $PIPE_FILE ]] && echo "SUCCESS" >$PIPE_FILE
+                else
+                   echo "$(date): ${ALIAS} Reinstate operation failed." >> $LOG_FILE
+                   echo "$reinstate" >> $LOG_FILE
+                   [[ -p $PIPE_FILE ]] && echo "FAIL" >$PIPE_FILE
+                fi
+                     
+            else # 1
+
+               if [[ -z $PG_START_SCRIPT ]]; then
+                 $BINHOME/bin/pg_ctl start -D ${PGDATA} -l $PGSQL_BASE/log/server.log -s -o "-p ${PGPORT} --config_file=$PGSQL_BASE/etc/postgresql.conf $ADDITIONAL_START_OPTIONS" -w -t 300
+                 RC=$?
+               else
+                 $PG_START_SCRIPT
+                 RC=$?
+               fi
+               if [[ $RC -eq 0 ]]; then
+                 FAIL_COUNT[$ALIAS]=0
+                 echo "$(date): Cluster ${ALIAS} successfully started." >> $LOG_FILE
+                 [[ -p $PIPE_FILE ]] && echo "SUCCESS" >$PIPE_FILE
+               else
+                 FAIL_COUNT[$ALIAS]=$((FAIL_COUNT[$ALIAS]+1))
+                 echo "$(date): Cluster ${ALIAS} startup failed. Fail count ${FAIL_COUNT[$ALIAS]}." >> $LOG_FILE
+                 [[ -p $PIPE_FILE ]] && echo "FAIL" >$PIPE_FILE
+                 if [[ ${FAIL_COUNT[$ALIAS]} -eq $v_fail_count && $local_status == "MASTER" && $v_autofailover =~ yes|YES ]]; then
+                    standby=$($PGOPERATE_BASE/bin/standbymgr.sh --status --list | grep "STANDBY|UP" | sort -n | head -1)
+                    if [[ $? -eq 0 && ! -z $standby ]]; then
+                       standby_node_number=$(echo $standby | cut -d"|" -f1)
+                       standby_host=$(echo $standby | cut -d"|" -f2)
+                       echo "$(date): Failcount for Cluster ${ALIAS} is $v_fail_count and autofailover is enabled. Will failover to ${standby_host} node number ${standby_node_number}." >> $LOG_FILE
+                       failover=$($PGOPERATE_BASE/bin/standbymgr.sh --failover --target ${standby_host})
+                       if [[ $? -eq 0 ]]; then
+                          echo "$(date): ${ALIAS} Failover was successful." >> $LOG_FILE
+                          FAIL_COUNT[$ALIAS]=0
+                       else
+                          echo "$(date): ${ALIAS} Failover operation failed." >> $LOG_FILE
+                          echo "$failover" >> $LOG_FILE
+                       fi
+                    else
+                       echo "$(date): Failcount for Cluster ${ALIAS} is more than $v_fail_count. No running standby found to failover." >> $LOG_FILE
+                    fi
+                 fi
+               fi
+            fi # 1
           elif [[ $INTENDED_STATE == "DOWN" && $STATUS == "UP" ]]; then
             if [[ -z $PG_STOP_SCRIPT ]]; then
               $BINHOME/bin/pg_ctl stop -D ${PGDATA} -s -m fast
@@ -141,9 +186,14 @@ fi
           fi
         fi
       fi
+      
+      echo "FAIL_COUNT[$ALIAS]=${FAIL_COUNT[$ALIAS]}" >> /tmp/pgoperated_subshell.tmp
+
     ) &
 
-    wait $!
+      wait $!
+      
+      [[ -f /tmp/pgoperated_subshell.tmp ]] && eval "$(cat /tmp/pgoperated_subshell.tmp)" && rm /tmp/pgoperated_subshell.tmp
 
       unset ALIAS pfile pfile_base tab
     done < <(ls -1 $PGOPERATE_BASE/etc/parameters_*.conf)
@@ -159,6 +209,8 @@ echo "$PID" > $PID_FILE
 
 elif [[ $1 == "reload" ]]; then
 # Call pg_ctl reload on all running PostgreSQL instances.
+  
+  clustertab="$(pgup --list)"
   
   source $HOME/.pgbasenv_profile
   while read pfile; do

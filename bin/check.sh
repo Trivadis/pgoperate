@@ -35,6 +35,9 @@ echo "
 }
 
 
+# Set custom .psqlrc file
+export PSQLRC=$PGOPERATE_BASE/bin/.psqlrc
+
 
 declare -r SCRIPTDIR="$( cd "$(dirname "$0")" ; pwd -P )"
 

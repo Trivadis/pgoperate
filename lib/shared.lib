@@ -60,7 +60,8 @@ set_conf_param() {
 local config="$1"
 local param="$2"
 local value="$3"
-local repval="$(grep -Ei "(^|#| )$param *=" $config)"
+#local repval="$(grep -Ei "(^|#| )$param *=" $config)"
+local repval="$(grep -Ei "(^|#) *$param *=" $config)"
 
 if [[ ${#repval} -gt 0 ]]; then
   modifyFile $config rep "$param = $value\t\t# Modified by PgOperate" "${repval//[$'\n']}"
