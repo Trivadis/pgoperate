@@ -297,7 +297,34 @@ while read check_variable; do
 
   if [[ $exptype == "json" ]]; then
   
-     echo "json"
+
+       eval "$check_function"
+  if [[ $? -eq 0 ]]; then
+     #alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
+     reset_fail_count $check_function
+  else
+     add_fail_count $check_function
+
+     if [[ $FAILCOUNT -ge $OCCURRENCE ]]; then
+        #alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
+        #eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
+       
+        ## added output to  text mmi
+          
+          printf '{"check":"%s","status":"%s","treshold":"%s"}\n' "$check_variable" "critical" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+
+     else
+        alarm_success $check_variable "FAIL COUNT: $FAILCOUNT: $(eval "echo \"\$${check_function}_PAYLOAD\"")"
+        eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
+        echo "alarm success"
+        ## added output to  text mmi
+
+
+     fi
+  fi
+
+
+
   elif [[ $exptype == "text" ]]; then      
      #debug echo "the text part"  
 
@@ -312,14 +339,9 @@ while read check_variable; do
         #alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
         #eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
        
-       
-        ## added output to  text mmi
-        if [[ $exptype == "json" ]]; then
-          echo "json"
-        elif [[ $exptype == "text" ]]; then
-          
+        ## added output to  text mmi          
           echo $check_variable "|" "critical" "|" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
-        fi   
+
      else
         alarm_success $check_variable "FAIL COUNT: $FAILCOUNT: $(eval "echo \"\$${check_function}_PAYLOAD\"")"
         eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
