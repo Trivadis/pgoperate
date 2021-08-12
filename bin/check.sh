@@ -29,8 +29,9 @@ help(){
 echo "
   Execute all checks defined in $PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf.
 
-  No arguments required.
-
+  Arguments:
+                -t|--text output result to text format only
+                -j|--json output result to json format only
 "
 }
 
@@ -242,6 +243,14 @@ alarm_critical() {
 
 while (( "$#" )); do
   case "$1" in
+    -t|--text)
+    exptype='text'
+    shift
+      ;;
+    -j|--json)
+    exptype='json'
+    shift
+      ;;      
     help) help
           exit 0
           ;;
@@ -266,7 +275,7 @@ fi
 
 
 while read check_variable; do
-  echo "Executing check $check_variable"
+  
   eval "test ! -z \$$check_variable"
 
   [[ $? -gt 0 ]] && continue
@@ -284,7 +293,48 @@ while read check_variable; do
   eval "test ! -z \${${check_variable}_THRESHOLD+check}" && eval "declare -r ${check_function}_THRESHOLD=\$${check_variable}_THRESHOLD"
   eval "test ! -z \${${check_variable}_OCCURRENCE+check}" && eval "declare -r ${check_function}_OCCURRENCE=\$${check_variable}_OCCURRENCE" && OCCURRENCE=$(eval "echo \$${check_variable}_OCCURRENCE")
 
+
+
+  if [[ $exptype == "json" ]]; then
   
+     echo "json"
+  elif [[ $exptype == "text" ]]; then      
+     #debug echo "the text part"  
+
+       eval "$check_function"
+  if [[ $? -eq 0 ]]; then
+     #alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
+     reset_fail_count $check_function
+  else
+     add_fail_count $check_function
+
+     if [[ $FAILCOUNT -ge $OCCURRENCE ]]; then
+        #alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
+        #eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
+       
+       
+        ## added output to  text mmi
+        if [[ $exptype == "json" ]]; then
+          echo "json"
+        elif [[ $exptype == "text" ]]; then
+          
+          echo $check_variable "|" "critical" "|" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+        fi   
+     else
+        alarm_success $check_variable "FAIL COUNT: $FAILCOUNT: $(eval "echo \"\$${check_function}_PAYLOAD\"")"
+        eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
+        echo "alarm success"
+        ## added output to  text mmi
+
+
+     fi
+  fi
+
+  else
+
+  
+  echo "Executing check $check_variable"
+
   eval "$check_function"
   if [[ $? -eq 0 ]]; then
      alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
@@ -295,12 +345,25 @@ while read check_variable; do
      if [[ $FAILCOUNT -ge $OCCURRENCE ]]; then
         alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
         eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
+       
+       
+ #       ## added output to  text mmi
+ #       if [[ $exptype == "json" ]]; then
+ #         echo "json"
+ #       elif [[ $exptype == "text" ]]; then
+          
+  #        echo $check_variable "|" "critical" "|" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+ #       fi   
      else
         alarm_success $check_variable "FAIL COUNT: $FAILCOUNT: $(eval "echo \"\$${check_function}_PAYLOAD\"")"
         eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
+        echo "alarm success"
+                ## added output to  text mmi
+
 
      fi
   fi
+fi  
 
 done < <(compgen -A variable | grep -E "^PG_CHECK" | grep -vE "(_THRESHOLD|_OCCURRENCE)$")
 
