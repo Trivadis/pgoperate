@@ -90,6 +90,9 @@
 declare -r SCRIPTDIR="$( cd "$(dirname "$0")" ; pwd -P )"
 declare -r PARAMETERS=parameters.conf
 
+OS_USER=$(id -un)
+OS_GROUP=$(id -gn)
+
 # Set custom .psqlrc file
 export PSQLRC=$PGOPERATE_BASE/bin/.psqlrc
 
@@ -162,13 +165,13 @@ Arguments:
 create_backup_dir() {
 local bdir=$1
 mkdir -p $bdir
-chown postgres:postgres $bdir
+chown $OS_USER:$OS_GROUP $bdir
 touch $bdir/meta.info
-chown postgres:postgres $bdir/meta.info
+chown $OS_USER:$OS_GROUP $bdir/meta.info
 mkdir -p $bdir/data
-chown postgres:postgres $bdir/data
+chown $OS_USER:$OS_GROUP $bdir/data
 mkdir -p $bdir/wal
-chown postgres:postgres $bdir/wal
+chown $OS_USER:$OS_GROUP $bdir/wal
 }
 
 
@@ -421,12 +424,12 @@ fi
 
 if [[ ! -d $BACKUP_LOCATION ]]; then
   info "Backup directory $BACKUP_LOCATION not exist. Creating."
-  mkdir -p $BACKUP_LOCATION && chown postgres:postgres $BACKUP_LOCATION
+  mkdir -p $BACKUP_LOCATION && chown $OS_USER:$OS_GROUP $BACKUP_LOCATION
 fi
 
 
 #if [[ ! -z "$PG_SUPERUSER_PWDFILE" && -f "$SCRIPTDIR/$PG_SUPERUSER_PWDFILE" ]]; then
-#    chown postgres:postgres $SCRIPTDIR/$PG_SUPERUSER_PWDFILE
+#    chown $OS_USER:$OS_GROUP $SCRIPTDIR/$PG_SUPERUSER_PWDFILE
 #    chmod 0400 $SCRIPTDIR/$PG_SUPERUSER_PWDFILE
 #    PG_SUPERUSER_PWD="$(head -1 $SCRIPTDIR/$PG_SUPERUSER_PWDFILE | xargs)"
 #else
@@ -484,7 +487,7 @@ if [[ "${BACKUP_MODE,,}" == "full" ]]; then
   cp $PGSQL_BASE/etc/*.conf $CURR_BACKUP_DIR/cfgs
 
 
-  chown postgres:postgres $CURR_BACKUP_DIR/data/*
+  chown $OS_USER:$OS_GROUP $CURR_BACKUP_DIR/data/*
 
   if [[ "$SWITCH_ARCH_LOC" == true ]]; then
     printheader "Maintaining spare archive log location $PGSQL_BASE/arch."

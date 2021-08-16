@@ -1,6 +1,8 @@
 SET_CONF_PARAM_IN_CLUSTER=YES
 _IS_ROOT="$(id -u)"
 
+OS_USER=$(id -un)
+OS_GROUP=$(id -gn)
 
 prepare_logdir() {
   mkdir -p $PGSQL_BASE/log/tools
@@ -82,24 +84,24 @@ fi
 
 create_dirs() {
 mkdir -p $PGSQL_BASE
-chown postgres:postgres $PGSQL_BASE
+chown $OS_USER:$OS_GROUP $PGSQL_BASE
 mkdir -p $PGSQL_BASE/data
-chown postgres:postgres $PGSQL_BASE/data
+chown $OS_USER:$OS_GROUP $PGSQL_BASE/data
 chmod 700 $PGSQL_BASE/data
 mkdir -p $PGSQL_BASE/arch
-chown postgres:postgres $PGSQL_BASE/arch
+chown $OS_USER:$OS_GROUP $PGSQL_BASE/arch
 chmod 700 $PGSQL_BASE/arch
 mkdir -p $PGSQL_BASE/scripts
-chown postgres:postgres $PGSQL_BASE/scripts
+chown $OS_USER:$OS_GROUP $PGSQL_BASE/scripts
 chmod 700 $PGSQL_BASE/scripts
 mkdir -p $PGSQL_BASE/log
-chown postgres:postgres $PGSQL_BASE/log
+chown $OS_USER:$OS_GROUP $PGSQL_BASE/log
 chmod 700 $PGSQL_BASE/log
 mkdir -p $PGSQL_BASE/etc
-chown postgres:postgres $PGSQL_BASE/etc
+chown $OS_USER:$OS_GROUP $PGSQL_BASE/etc
 chmod 700 $PGSQL_BASE/etc
 mkdir -p $PGSQL_BASE/cert
-chown postgres:postgres $PGSQL_BASE/cert
+chown $OS_USER:$OS_GROUP $PGSQL_BASE/cert
 chmod 700 $PGSQL_BASE/cert
 }
 
@@ -110,9 +112,9 @@ if [[ "$ENABLE_SSL" == "yes" ]]; then
  cp $CA_CERT "$PGSQL_BASE/cert/"
  cp $SERVER_CERT "$PGSQL_BASE/cert/"
  cp $SERVER_KEY "$PGSQL_BASE/cert/"
- chown postgres:postgres "$PGSQL_BASE/cert/$(basename $SERVER_CERT)"
- chown postgres:postgres "$PGSQL_BASE/cert/$(basename $SERVER_KEY)"
- chown postgres:postgres "$PGSQL_BASE/cert/$(basename $CA_CERT)"
+ chown $OS_USER:$OS_GROUP "$PGSQL_BASE/cert/$(basename $SERVER_CERT)"
+ chown $OS_USER:$OS_GROUP "$PGSQL_BASE/cert/$(basename $SERVER_KEY)"
+ chown $OS_USER:$OS_GROUP "$PGSQL_BASE/cert/$(basename $CA_CERT)"
  chmod og-rwx "$PGSQL_BASE/cert/$(basename $SERVER_CERT)"
  chmod og-rwx "$PGSQL_BASE/cert/$(basename $SERVER_KEY)"
  chmod og-rwx "$PGSQL_BASE/cert/$(basename $CA_CERT)"

@@ -53,6 +53,9 @@ echo "
 # Set custom .psqlrc file
 export PSQLRC=$PGOPERATE_BASE/bin/.psqlrc
 
+OS_USER=$(id -un)
+OS_GROUP=$(id -gn)
+
 declare -r SCRIPTDIR="$( cd "$(dirname "$0")" ; pwd -P )"
 
 [[ -z $PGBASENV_ALIAS ]] && error "Set the alias for the current cluster first." && exit 1
@@ -196,14 +199,14 @@ $PGOPERATE_BASE/bin/control.sh stop
 if [[ ! -d $PGSQL_BASE/data ]]; then
   info "Directory $PGSQL_BASE/data doesn't exist. Will be created."
   mkdir -p $PGSQL_BASE/data
-  chown postgres:postgres $PGSQL_BASE/data
+  chown $OS_USER:$OS_GROUP $PGSQL_BASE/data
   chmod 0700 $PGSQL_BASE/data
 fi
 
 if [[ ! -d $RECENT_WAL_LOCATION && -d $PGSQL_BASE/data/pg_wal ]]; then
 printheader "Copying current WALs to $tmpdir."
 mkdir -p $tmpdir
-chown postgres:postgres $tmpdir
+chown $OS_USER:$OS_GROUP $tmpdir
 #cp -p $PGSQL_BASE/data/pg_wal/* $tmpdir/
 find $PGSQL_BASE/data/pg_wal -maxdepth 1 -type f -exec cp -t $tmpdir {} +
 fi
@@ -226,11 +229,11 @@ fi
 
 printheader "Restoring WALs to the $PGSQL_BASE/data/pg_wal."
 tar -xpf $backupdir/data/pg_wal.tar.gz -C $PGSQL_BASE/data/pg_wal
-chown -R postgres:postgres $PGSQL_BASE/data/pg_wal
+chown -R $OS_USER:$OS_GROUP $PGSQL_BASE/data/pg_wal
 
 if [[ -d $RECENT_WAL_LOCATION ]]; then
 printheader "Copying current WALs to the $PGSQL_BASE/data/pg_wal from $RECENT_WAL_LOCATION."
-chown -R postgres:postgres $RECENT_WAL_LOCATION
+chown -R $OS_USER:$OS_GROUP $RECENT_WAL_LOCATION
 cp -p $RECENT_WAL_LOCATION/* $PGSQL_BASE/data/pg_wal
 local tmpdir=$RECENT_WAL_LOCATION
 else
@@ -242,7 +245,7 @@ if [[ -f $PGSQL_BASE/data/tablespace_map && $(cat $PGSQL_BASE/data/tablespace_ma
   printheader "Restoring externally stored tablespaces."
   while read oid tbs_path; do
     info "Preparing $tbs_path directory."
-    [[ -d $tbs_path ]] && rm -rf $tbs_path/* || mkdir -p $tbs_path && chown postgres:postgres $tbs_path
+    [[ -d $tbs_path ]] && rm -rf $tbs_path/* || mkdir -p $tbs_path && chown $OS_USER:$OS_GROUP $tbs_path
     info "Restoring tablespace OID $oid."
     tar -xpf $backupdir/data/$oid.tar.gz -C $tbs_path
   done <$PGSQL_BASE/data/tablespace_map
@@ -281,7 +284,7 @@ recovery_end_command = 'rm -rf $tmpdir && rm -rf /tmp/pg_replslot'" > $PGSQL_BAS
    else
     echo "recovery_target_action=promote" >> $PGSQL_BASE/data/recovery.conf
    fi
-   chown postgres:postgres $PGSQL_BASE/data/recovery.conf
+   chown $OS_USER:$OS_GROUP $PGSQL_BASE/data/recovery.conf
 
 fi
 

@@ -58,6 +58,8 @@ declare -r EXECID=$((1 + $RANDOM % 9999))
 # Set custom .psqlrc file
 export PSQLRC=$PGOPERATE_BASE/bin/.psqlrc
 
+OS_USER=$(id -un)
+OS_GROUP=$(id -gn)
 
 GRE='\033[0;32m'
 RED='\033[0;31m'
@@ -943,13 +945,13 @@ primary_slot_name = '${REPLICATION_SLOT_NAME}'
 recovery_target_timeline = 'latest'
 " > $PGSQL_BASE/data/recovery.conf
 [[ ! -z $BACKUP_LOCATION ]] && echo "restore_command = 'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'" >> $PGSQL_BASE/data/recovery.conf
-chown postgres:postgres $PGSQL_BASE/data/recovery.conf
+chown $OS_USER:$OS_GROUP $PGSQL_BASE/data/recovery.conf
 }
 
 do_rewind(){
 
   # if [[ ! -z "$PG_SUPERUSER_PWDFILE" && -f "$SCRIPTDIR/$PG_SUPERUSER_PWDFILE" ]]; then
-  #   chown postgres:postgres $SCRIPTDIR/$PG_SUPERUSER_PWDFILE
+  #   chown $OS_USER:$OS_GROUP $SCRIPTDIR/$PG_SUPERUSER_PWDFILE
   #   chmod 0400 $SCRIPTDIR/$PG_SUPERUSER_PWDFILE
   #   PG_SUPERUSER_PWD="$(head -1 $SCRIPTDIR/$PG_SUPERUSER_PWDFILE | xargs)"
   # else

@@ -134,12 +134,22 @@ check_response() {
 }
 
 
+echo "Try to lock $LOCK_FILE" >> /tmp/control.log
 exec 9>$LOCK_FILE
 flock -x 9
 if [[ $1 == "start" ]]; then
+
+  local_status=$($PGOPERATE_BASE/bin/standbymgr.sh --status --list | grep "|$(hostname -s)|" | cut -d"|" -f3)
+  RC=$?
+  if [[ $RC -eq 0 && $local_status == "REINSTATE" && $2 != "force" ]]; then
+      echo "INFO: The cluster is in reinstate mode. Reinstate it first with --reinstate option."
+      exit 1
+  fi
+
   echo -e "Starting cluster ${PGBASENV_ALIAS}."
   set_param "INTENDED_STATE" "UP"
   if [[ -f $PID_FILE && $AUTOSTART == "YES" ]]; then
+     echo "Start using daemon" >> /tmp/control.log
      check_response $(call_daemon)
      RC=$?
      if [[ $RC -gt 0 ]]; then
@@ -147,15 +157,10 @@ if [[ $1 == "start" ]]; then
         exit 1
      fi
   else
-     local_status=$($PGOPERATE_BASE/bin/standbymgr.sh --status --list | grep "|$(hostname -s)|" | cut -d"|" -f3)
+     echo "Start using local force=$2" >> /tmp/control.log
+     start_local
      RC=$?
-     if [[ $RC -eq 0 && $local_status == "REINSTATE" && $2 != "force" ]]; then
-        echo "INFO: The cluster is in reinstate mode. Reinstate it first or user force option."
-        exit 1
-     else
-        start_local
-        RC=$?
-     fi
+
   fi
 
 
