@@ -56,6 +56,7 @@ check_wal_count() {
 
  if [[ $wal_curr_size -le $max_wal_size ]]; then
  	check_wal_count_PAYLOAD="$successmsg"
+   check_wal_count_CURVAL=$((wal_curr_size/1024/1024))MB
  	return 0
  else
  
@@ -470,8 +471,8 @@ fi
 
 
 
-check_sapce_usage() {
-  [[ -z $PGSQL_BASE ]] && check_sapce_usage_PAYLOAD="Parameter PGSQL_BASE not defined, cannot execute this check." && return 1
+check_space_usage() {
+  [[ -z $PGSQL_BASE ]] && check_space_usage_PAYLOAD="Parameter PGSQL_BASE not defined, cannot execute this check." && return 1
   
   local usage_info=$(df $PGSQL_BASE | tail -1 | awk '{print $5":"$6}')
    
@@ -479,12 +480,14 @@ check_sapce_usage() {
   local mount_point=${usage_info//*:}
   
   pct_used=${pct_used//%*}
+  check_space_usage_CURVAL=$pct_used
 
-  if [[ $pct_used -ge $check_sapce_usage_THRESHOLD ]]; then
-     check_sapce_usage_PAYLOAD="The mount point $mount_point on which cluster data directory resides is ${pct_used}% used. Threshold is ${check_sapce_usage_THRESHOLD}%."
+
+  if [[ $pct_used -ge $check_space_usage_THRESHOLD ]]; then
+     check_space_usage_PAYLOAD="The mount point $mount_point on which cluster data directory resides is ${pct_used}% used. Threshold is ${check_space_usage_THRESHOLD}%."
      return 1
   else
-     check_sapce_usage_PAYLOAD="The mount point $mount_point on which cluster data directory resides is ${pct_used}% used. Threshold is ${check_sapce_usage_THRESHOLD}%."  
+     check_space_usage_PAYLOAD="The mount point $mount_point on which cluster data directory resides is ${pct_used}% used. Threshold is ${check_space_usage_THRESHOLD}%."  
      return 0
   fi
 
