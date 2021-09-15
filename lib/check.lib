@@ -85,7 +85,7 @@ check_dead_rows() {
 
  local autovac_status="$(exec_pg "select setting from pg_settings where name='autovacuum'" | xargs)"
  local track_status="$(exec_pg "select setting from pg_settings where name='track_counts'" | xargs)"
-
+ 
  if [[ "$autovacuum_status" != "on" && "$track_status" != "on" ]]; then
  	check_dead_rows_PAYLOAD="Autovacuum process cannot run on this cluster. Parameter autovacuum=$autovac_status and parameter track_counts=$track_status. Both must be on."
     return 1
@@ -102,6 +102,8 @@ check_dead_rows() {
    all_tables="$all_tables\n$tables"
    tables=""
  done < <(exec_pg "select datname from pg_database where datname not in ('postgres','template1','template0')" | xargs)
+ 
+ check_dead_rows_CURVAL=$found
  
  if [[ "$found" == true ]]; then
  	check_dead_rows_PAYLOAD="There are tables in non-default databases where number of dead rows consists more than ${check_dead_rows_THRESHOLD}% of live rows."
@@ -142,7 +144,7 @@ check_stdby_status() {
 	
  local wal_receiver_status="$(exec_pg "select status from pg_stat_wal_receiver" | xargs)"
  local is_apply_paused="$(exec_pg "select pg_is_wal_replay_paused()" | xargs)"
- 
+ check_stdby_status_CURVAL=$apply_status
  [[ "$is_apply_paused" == "t" ]] && local apply_status="paused" || local apply_status="not paused"
 
  local conn_output
@@ -179,6 +181,7 @@ check_stdby_ap_lag_time() {
 
  local last_master_commit_time
  local master_conninfo="$(get_master_connectinfo)"
+ 
 
  last_master_commit_time=$($PG_BIN_HOME/psql "$master_conninfo" -c "SELECT EXTRACT(EPOCH FROM timestamp) from pg_last_committed_xact()" -t 2>&1)
  if [[ $? -gt 0 ]]; then
@@ -200,6 +203,7 @@ check_stdby_ap_lag_time() {
  local delay_secs=$((last_master_commit_time-last_apply_time))
  local delay_mins=$((delay_secs/60))
  
+ check_stdby_ap_lag_time_CURVAL=$delay_mins
  # This variable is used by standbymgr.sh  
  check_stdby_ap_lag_time_VALUE=$delay_mins
 
@@ -242,6 +246,7 @@ check_stdby_tr_delay_mb() {
  
  # This variable is used by standbymgr.sh
  check_stdby_tr_delay_mb_VALUE=$delay_mb
+ check_stdby_tr_delay_mb_CURVAL=$delay_mb
  
  if [[ $delay_mb -ge $check_stdby_tr_delay_mb_THRESHOLD ]]; then
     check_stdby_tr_delay_mb_PAYLOAD="Current transfer delay between master and standby is ${delay_mb}MB, more than defined threshold $check_stdby_tr_delay_mb_THRESHOLD!"
@@ -267,6 +272,7 @@ check_stdby_apply_delay_mb() {
 
  local delay_bytes="$(exec_pg "select pg_wal_lsn_diff(pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn())" | xargs)"
  local delay_mb=$((delay_bytes/1024/1024))
+ check_stdby_apply_delay_mb_CURVAL=${delay_mb}MB
   
  # This variable is used by standbymgr.sh
  check_stdby_apply_delay_mb_VALUE=$delay_mb
@@ -292,7 +298,8 @@ check_max_conn() {
  local max_connections=$((max_all_connects-max_super_connects))
  local max_thld_connections=$((max_connections*check_max_conn_THRESHOLD/100))
  local current_connections="$(exec_pg "select count(*) from pg_stat_activity" | xargs)"
- 
+ check_max_conn_CURVAL=$current_connections
+
  if [[ $current_connections -ge $max_thld_connections ]]; then
  	check_max_conn_PAYLOAD="Number of connections $current_connections is more or equal to the threshold value $max_thld_connections. Maximum allowed non-superuser is $max_connections."
  	return 1
@@ -454,6 +461,7 @@ echo "
 last_check_line=$last_check_line
 last_check_file=$last_check_file
 server_log_last_line=$server_log_last_line" > $storage
+check_logfiles_CURVAL=$msg_count
 
 if [[ "$found" == true ]]; then
    check_logfiles_PAYLOAD="There are messages matching the search pattern $check_logfiles_THRESHOLD in logfiles. Number messages found $msg_count."
