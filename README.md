@@ -922,6 +922,7 @@ PG_CHECK_WAL_COUNT | ok | 16MB | 20
 ```
 
 For a json formatted output execute `pgoperate --check -j `
+
 ```
 {"check":"PG_CHECK_DEAD_ROWS","status":"ok","curval":"false","treshold":"30"}
 {"check":"PG_CHECK_FSPACE","status":"ok","curval":"27","treshold":"90"}
@@ -932,4 +933,35 @@ For a json formatted output execute `pgoperate --check -j `
 {"check":"PG_CHECK_STDBY_STATUS","status":"ok","curval":"","treshold":""}
 {"check":"PG_CHECK_STDBY_TR_DELAY_MB","status":"ok","curval":"","treshold":"10"}
 {"check":"PG_CHECK_WAL_COUNT","status":"ok","curval":"16MB","treshold":"20"}
+```
+
+Another useful feature is the possibility to execute only one check at a time.
+
+To use this feature execute `pgoperate --check -c=<your_desired_check>` or `pgoperate --check --check=<your_desired_check>` 
+
+Keep in mind that the check needs to be defined in the parameter file in '$PGOPERATE_BASE/etc'
+
+```
+pgoperate --check -c=PG_CHECK_WAL_COUNT
+
+Current cluster: mycls
+Executing check PG_CHECK_WAL_COUNT
+
+SUCCESS: From check PG_CHECK_WAL_COUNT: WAL files count is 1, the current WAL size 16MB not exceed max_wal_size 1024MB more than 20% threshold.
+```
+
+Combination with text `pgoperate --check -c=<your_desired_check> -t` or json `pgoperate --check -c=<your_desired_check> -j` based output is also possible.
+
+```
+pgoperate --check -c=PG_CHECK_WAL_COUNT -j
+
+Current cluster: mycls
+{"check":"PG_CHECK_WAL_COUNT","status":"ok","curval":"16MB","treshold":"20"}
+```
+
+```
+pgoperate --check -c=PG_CHECK_WAL_COUNT -t
+
+Current cluster: d01pg
+PG_CHECK_WAL_COUNT | ok | 16MB | 20
 ```
