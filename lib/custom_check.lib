@@ -1,0 +1,39 @@
+# Checks library.
+#
+# Each check function must return 0 on check success and other number on negative.
+# Check function can return a payload message in the variable <function name>_PAYLOAD.
+#
+# Special variables which can be used inside the function:
+#    <function name>_PAYLOAD     - Output variable, assign output text to it.
+#    <function name>_PAYLOADLONG - Output variable, assign extra output text to it. \n can be used to divide text to new lines.
+#    <function_name>_THRESHOLD   - Input variable, if there was threshold defined, it will be assigned to this variable.
+#    <function_name>_OCCURRENCE  - Input variable, if there was occurrence defined, it will be assigned to this variables.
+#    <function_name>_FAILCOUNT   - Output variable, this variable will be set by get_fail_count function.
+#
+# Special functions that can be used inside the function:
+#    exec_pg <cmd>   - Will execute cmd in postgres and return psql return code, output will go to stdout.
+#    get_fail_count - Will get the number of times this function returned unsuccessful result. It will be assigned to 
+#                     <function_name>_FAILCOUNT variable.
+#
+#
+# You can use all variables from parameters.conf file in check functions.
+#
+# Other variables available:
+#   $PG_BIN_HOME  - Points to the bin directory of the postgresql.
+#   $PG_AVAILABLE - Will be true if database cluster available and false if not available.
+#
+# Example:
+#
+# check_file_exists() {
+#  if [[ -f myfile ]]; then
+#     check_file_exists_PAYLOAD="File myfile was found."
+#     return 0
+#  else
+#  	  get_fail_count
+#  	  ((check_file_exists_FAILCOUNT++))  # We increment FAILCOUNT here to count also current failure.
+#     check_file_exists_PAYLOAD="File myfile was not found. Failed checks count $check_file_exists_FAILCOUNT"
+#     return 1
+#  fi
+# }
+#
+#

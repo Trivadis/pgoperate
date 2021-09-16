@@ -57,6 +57,7 @@ source $PARAMETERS_FILE
 
 
 declare -r CHECKS_LIBRARY=check.lib
+declare -r CHECKS_LIBRARY=custom_check.lib
 declare -r FAIL_COUNT_FILE=$PGSQL_BASE/etc/.check.fail.counter
 
 

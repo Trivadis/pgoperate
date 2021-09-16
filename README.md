@@ -144,7 +144,6 @@ SUCCESS: From check PG_CHECK_WAL_COUNT: WAL files count is 5, the current WAL si
 ```
 
 
-
 ## Installation and upgrade
 
 To install pgOperate you need installer script `install_pgoperate.sh` and tar file with current version.
@@ -867,9 +866,9 @@ PG_CHECK_<CHECK NAME>_THRESHOLD=
 PG_CHECK_<CHECK NAME>_OCCURRENCE=
 ```
 
-Then check function must be defined in `check.lib` file.
+Then custom check function must be defined in `custom_check.lib` file.
 
-If check defined then function with the specified name will be executed from `check.lib` library.
+If check defined then function with the specified name will be executed from `custom_check.lib` library.
 
 Function must return 0 on check success and not 0 on check not passed.
 
@@ -894,7 +893,7 @@ Next functions can be called from check functions:
 Output variables:
     `<function name>_PAYLOAD`     - Output variable, assign output text to it.
     `<function name>_PAYLOADLONG` - Output variable, assign extra output text to it. \n can be used to divide text to new lines.
-
+    `<function name>_CURVAL`      - Output Variable, assign current value to it.
 
 When function returns 0 or 1, then it is also good to return some information to the user. This information can be passed over `<function name>_PAYLOAD` variable.
 If some big amount of data, extra information must be displayed, then pass it over `<function name>_PAYLOADLONG` variable.
@@ -904,3 +903,33 @@ Check `check.lib` file for check function examples.
 There are already few predefined checks.
 
 
+There is also the possibility to generate a text or json based output.
+
+For a text formatted output execute `pgoperate --check -t `
+```
+pgoperate --check -t
+
+Current cluster: mycls
+PG_CHECK_DEAD_ROWS | ok | false | 30
+PG_CHECK_FSPACE | ok | 27 | 90
+PG_CHECK_LOGFILES | ok | 0 | ERROR|FATAL|PANIC
+PG_CHECK_MAX_CONNECT | ok | 6 | 90
+PG_CHECK_STDBY_AP_DELAY_MB | ok |  | 100
+PG_CHECK_STDBY_AP_LAG_MIN | ok |  | 10
+PG_CHECK_STDBY_STATUS | ok |  |
+PG_CHECK_STDBY_TR_DELAY_MB | ok |  | 10
+PG_CHECK_WAL_COUNT | ok | 16MB | 20
+```
+
+For a json formatted output execute `pgoperate --check -j `
+```
+{"check":"PG_CHECK_DEAD_ROWS","status":"ok","curval":"false","treshold":"30"}
+{"check":"PG_CHECK_FSPACE","status":"ok","curval":"27","treshold":"90"}
+{"check":"PG_CHECK_LOGFILES","status":"ok","curval":"0","treshold":"ERROR|FATAL|PANIC"}
+{"check":"PG_CHECK_MAX_CONNECT","status":"ok","curval":"6","treshold":"90"}
+{"check":"PG_CHECK_STDBY_AP_DELAY_MB","status":"ok","curval":"n/a","treshold":"100"}
+{"check":"PG_CHECK_STDBY_AP_LAG_MIN","status":"ok","curval":"","treshold":"10"}
+{"check":"PG_CHECK_STDBY_STATUS","status":"ok","curval":"","treshold":""}
+{"check":"PG_CHECK_STDBY_TR_DELAY_MB","status":"ok","curval":"","treshold":"10"}
+{"check":"PG_CHECK_WAL_COUNT","status":"ok","curval":"16MB","treshold":"20"}
+```

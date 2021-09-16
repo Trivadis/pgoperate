@@ -267,13 +267,15 @@ check_stdby_apply_delay_mb() {
  local is_standby="$(exec_pg "select pg_is_in_recovery()" | xargs)"
  if [[ "$is_standby" == "f" ]]; then
     check_stdby_apply_delay_mb_PAYLOAD="Not a standby database."
+    check_stdby_apply_delay_mb_CURVAL="n/a"
     return 0
  fi
 
  local delay_bytes="$(exec_pg "select pg_wal_lsn_diff(pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn())" | xargs)"
  local delay_mb=$((delay_bytes/1024/1024))
+
  check_stdby_apply_delay_mb_CURVAL=${delay_mb}MB
-  
+ 
  # This variable is used by standbymgr.sh
  check_stdby_apply_delay_mb_VALUE=$delay_mb
 
