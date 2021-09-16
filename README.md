@@ -199,7 +199,8 @@ If there will be special installation notes, they will be described in [Change L
 | Libraries               | Description                                                            |
 | ----------------------- | ---------------------------------------------------------------------- |
 | **shared.lib**          | Generally used functions.                                              |
-| **check.lib**           | Check function for check.sh.                                           |
+| **check.lib**           | Default check functions for check.sh (do not change this file).        |
+| **custom_check.lib**    | Custom check functions for check.sh (add here your custom checks).     |
 
 
 ## Tool specific scripts
@@ -258,6 +259,7 @@ $PGOPERATE_BASE ┐
                 │
                 ├─── lib ┐
                 │        ├── check.lib
+                │        ├── custom_check.lib
                 │        └── shared.lib
                 │
                 └─── bundle ┐
@@ -879,26 +881,25 @@ If `PG_CHECK_<CHECK NAME>_OCCURRENCE` is defined, then `check.sh` will alarm onl
 There are special input and output variables that can be used in check functions:
 
 Input variables:
-    `<function_name>_THRESHOLD`   - Input variable, if there was threshold defined, it will be assigned to this variable.
-    `<function_name>_OCCURRENCE`  - Input variable, if there was occurrence defined, it will be assigned to this variables.
- 
-    `$PG_BIN_HOME`  - Points to the bin directory of the postgresql.
-    `$SCRIPTDIR`    - The directory of the check script location. Can be used to create temporary invisible files for example. 
-    `$PG_AVAILABLE` - Will be true if database cluster available and false if not available.
+* `<function_name>_THRESHOLD`   - Input variable, if there was threshold defined, it will be assigned to this variable.
+* `<function_name>_OCCURRENCE`  - Input variable, if there was occurrence defined, it will be assigned to this variables.
+* `$PG_BIN_HOME`  - Points to the bin directory of the postgresql.
+* `$SCRIPTDIR`    - The directory of the check script location. Can be used to create temporary invisible files for example. 
+* `$PG_AVAILABLE` - Will be true if database cluster available and false if not available.
 
 Next functions can be called from check functions:
-    `exec_pg <cmd>`   - Will execute cmd in postgres and return psql return code, output will go to stdout.
-    `get_fail_count` - Will get the number of times this function returned unsuccessful result. It will be assigned to `<function_name>_FAILCOUNT` variable.
+* `exec_pg <cmd>`   - Will execute cmd in postgres and return psql return code, output will go to stdout.
+* `get_fail_count` - Will get the number of times this function returned unsuccessful result. It will be assigned to `<function_name>_FAILCOUNT` variable.
 
 Output variables:
-    `<function name>_PAYLOAD`     - Output variable, assign output text to it.
-    `<function name>_PAYLOADLONG` - Output variable, assign extra output text to it. \n can be used to divide text to new lines.
-    `<function name>_CURVAL`      - Output Variable, assign current value to it.
+* `<function name>_PAYLOAD`     - Output variable, assign output text to it.
+* `<function name>_PAYLOADLONG` - Output variable, assign extra output text to it. \n can be used to divide text to new lines.
+* `<function name>_CURVAL`      - Output Variable, assign current value to it.
 
 When function returns 0 or 1, then it is also good to return some information to the user. This information can be passed over `<function name>_PAYLOAD` variable.
 If some big amount of data, extra information must be displayed, then pass it over `<function name>_PAYLOADLONG` variable.
 
-Check `check.lib` file for check function examples.
+Check `custom_check.lib` file for check function examples.
 
 There are already few predefined checks.
 
