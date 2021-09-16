@@ -68,6 +68,13 @@ else
    exit 1
 fi
 
+if [[ -f $PGOPERATE_BASE/lib/$CUSTOM_CHECKS_LIBRARY ]]; then
+   . $PGOPERATE_BASE/lib/$CUSTOM_CHECKS_LIBRARY
+else
+   echo "ERROR: Custom Check library cannot be found: $PGOPERATE_BASE/lib/$CUSTOM_CHECKS_LIBRARY"
+   exit 1
+fi
+
 # Default port
 [[ -z $PG_PORT ]] && PG_PORT=5432
 
