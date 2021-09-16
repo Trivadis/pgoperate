@@ -33,7 +33,7 @@ echo "
   Arguments:
                 -t|--text output result to text format only
                 -j|--json output result to json format only
-                -c==<check_defined_in_paramter_file>|--c=<check_defined_in_paramter_file> 
+                -c==<check_defined_in_paramter_file>|--check=<check_defined_in_paramter_file> 
 "
 }
 
