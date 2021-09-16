@@ -1,4 +1,4 @@
-# Checks library.
+# Custom checks library.
 #
 # Each check function must return 0 on check success and other number on negative.
 # Check function can return a payload message in the variable <function name>_PAYLOAD.
