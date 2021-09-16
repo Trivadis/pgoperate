@@ -373,14 +373,14 @@ check_variable=$check
      if [[ $FAILCOUNT -ge $OCCURRENCE ]]; then
         alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
         eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
-        echo $check_variable "|" "critical" "|" "$(eval "echo \"\$${check_function}_CURVAL\"")"
+        
 
 
      else
         alarm_success $check_variable "FAIL COUNT: $FAILCOUNT: $(eval "echo \"\$${check_function}_PAYLOAD\"")"
         eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
         echo "alarm success"
-        echo $check_variable "|" "ok" "|" "$(eval "echo \"\$${check_function}_CURVAL\"")"
+        
 
                 ## added output to  text mmi
 
