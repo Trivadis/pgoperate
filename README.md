@@ -950,7 +950,7 @@ Executing check PG_CHECK_WAL_COUNT
 SUCCESS: From check PG_CHECK_WAL_COUNT: WAL files count is 1, the current WAL size 16MB not exceed max_wal_size 1024MB more than 20% threshold.
 ```
 
-Combination with text `pgoperate --check -c=<your_desired_check> -t` or json `pgoperate --check -c=<your_desired_check> -j` based output is also possible.
+Combination with text-based output `pgoperate --check -c=<your_desired_check> -t` or json-based output `pgoperate --check -c=<your_desired_check> -j` is also possible.
 
 ```
 pgoperate --check -c=PG_CHECK_WAL_COUNT -j
