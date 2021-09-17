@@ -187,7 +187,7 @@ check_stdby_ap_lag_time() {
 
  last_master_commit_time=$($PG_BIN_HOME/psql "$master_conninfo" -c "SELECT EXTRACT(EPOCH FROM timestamp) from pg_last_committed_xact()" -t 2>&1)
  if [[ $? -gt 0 ]]; then
-    check_stdby_ap_lag_time_PAYLOAD="Cannot connect to master. Muster unreachable!"
+    check_stdby_ap_lag_time_PAYLOAD="Cannot connect to master. Master unreachable!"
     return 1
  fi
 
@@ -240,7 +240,7 @@ check_stdby_tr_delay_mb() {
  
  last_master_lsn=$($PG_BIN_HOME/psql "$master_conninfo" -c "select pg_current_wal_lsn()" -t 2>&1)
  if [[ $? -gt 0 ]]; then
-    check_stdby_tr_delay_mb_PAYLOAD="Cannot connect to master. Muster unreachable!"
+    check_stdby_tr_delay_mb_PAYLOAD="Cannot connect to master. Master unreachable!"
     return 1
  fi
 
