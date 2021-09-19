@@ -40,18 +40,19 @@ daemon-status     Check the status of the pgOperate daemon process (pgoperated).
 
 declare -r SCRIPTDIR="$( cd "$(dirname "$0")" ; pwd -P )"
 
+if [[ $1 != "daemon-status" ]]; then
 
-[[ -z $PGBASENV_ALIAS ]] && error "Set the alias for the current cluster first." && exit 1
+  [[ -z $PGBASENV_ALIAS ]] && error "Set the alias for the current cluster first." && exit 1
 
-[[ -z $PGBASENV_ALIAS ]] && error "PG_BIN_HOME is not defined. Set the environment for cluster home."
-PG_BIN_HOME=$TVD_PGHOME/bin
+  [[ -z $PGBASENV_ALIAS ]] && error "PG_BIN_HOME is not defined. Set the environment for cluster home."
+  PG_BIN_HOME=$TVD_PGHOME/bin
 
-
-PARAMETERS_FILE=$PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf
-[[ ! -f $PARAMETERS_FILE ]] && echo "Cannot find configuration file $PARAMETERS_FILE." && exit 1
-source $PARAMETERS_FILE
-[[ ! -f $PGOPERATE_BASE/lib/shared.lib ]] && echo "Cannot read $PGOPERATE_BASE/lib/shared.lib file." && exit 1
-source $PGOPERATE_BASE/lib/shared.lib
+  PARAMETERS_FILE=$PGOPERATE_BASE/etc/parameters_${PGBASENV_ALIAS}.conf
+  [[ ! -f $PARAMETERS_FILE ]] && echo "Cannot find configuration file $PARAMETERS_FILE." && exit 1
+  source $PARAMETERS_FILE
+  [[ ! -f $PGOPERATE_BASE/lib/shared.lib ]] && echo "Cannot read $PGOPERATE_BASE/lib/shared.lib file." && exit 1
+  source $PGOPERATE_BASE/lib/shared.lib
+fi
 
 # Checking PGPORT
 [[ -z $PGPORT || $PGPORT -eq 1 ]] && PGPORT=$PG_PORT
@@ -134,7 +135,6 @@ check_response() {
 }
 
 
-echo "Try to lock $LOCK_FILE" >> /tmp/control.log
 exec 9>$LOCK_FILE
 flock -x 9
 if [[ $1 == "start" ]]; then
@@ -149,7 +149,6 @@ if [[ $1 == "start" ]]; then
   echo -e "Starting cluster ${PGBASENV_ALIAS}."
   set_param "INTENDED_STATE" "UP"
   if [[ -f $PID_FILE && $AUTOSTART == "YES" ]]; then
-     echo "Start using daemon" >> /tmp/control.log
      check_response $(call_daemon)
      RC=$?
      if [[ $RC -gt 0 ]]; then
@@ -157,7 +156,6 @@ if [[ $1 == "start" ]]; then
         exit 1
      fi
   else
-     echo "Start using local force=$2" >> /tmp/control.log
      start_local
      RC=$?
 

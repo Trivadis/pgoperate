@@ -89,4 +89,6 @@ restorecon -r -v $PGOPERATE_BASE/bin > /dev/null 2>&1
 create_service_file "pgoperated-$USER.service" $USER $GROUP
 add_sudoers_rules
 
+chmod g+w /var/run/postgresql
+
 echo "Done"

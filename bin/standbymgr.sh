@@ -212,7 +212,7 @@ db_copy_to_standbys() {
 
 
 get_actual_status() {
-   local role
+   local role start_time
    if [[ $TVD_PGIS_STANDBY == "YES" ]]; then
      role='STANDBY'
    else
@@ -231,11 +231,16 @@ get_actual_status() {
 
        check_stdby_ap_lag_time
        transfer_lag_min=$check_stdby_ap_lag_time_VALUE
-
      fi
 
    fi
-   echo "$role|$TVD_PGSTATUS|$TVD_PGSTANDBY_STATUS|$apply_lag_mb|$transfer_lag_mb|$transfer_lag_min"
+   if [[ $TVD_PGSTATUS == "UP" ]]; then
+     start_time=$(psql -t -c "SELECT date_part('epoch', pg_postmaster_start_time())" | xargs | cut -d"." -f1)
+   else
+     start_time="NA"
+   fi
+   
+   echo "$role|$TVD_PGSTATUS|$TVD_PGSTANDBY_STATUS|$apply_lag_mb|$transfer_lag_mb|$transfer_lag_min|$start_time"
 }
 
 
@@ -277,10 +282,12 @@ get_actual_status_from_nodes() {
 
 db_sync_with_actual_data() {
   local actual="$1"
+  local master_found=0
   while IFS= read -r line; do
     local host=$(echo $line | cut -d'|' -f1)
     local role=$(echo $line | cut -d'|' -f2)
-    if [[ $role == "MASTER" ]]; then
+    if [[ $role == "MASTER" && $master_found -eq 0 ]]; then
+      master_found=1
       db_set_new_master $host
     fi
   done <<< "$actual"
@@ -289,7 +296,7 @@ db_sync_with_actual_data() {
 sync_config() {
   local d RC
   if [[ -z $INPUT_PAYLOAD ]]; then
-     local actual_status=$(get_actual_status_from_nodes)
+     local actual_status="$(get_actual_status_from_nodes | sort -n -t'|' -k8)"
   else
      local actual_status="$INPUT_PAYLOAD"
   fi
