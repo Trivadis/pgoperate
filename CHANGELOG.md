@@ -1,3 +1,9 @@
+## 3.5
+* check.sh supports text (-t|--text) and json output (-j|--json)
+* check.sh supports specific metric checks (-c|--check)
+* check.sh output contains the current value
+* custom check.sh metrics moved from check.lib to custom_check.lib. Do not use check.lib for your custom metrics anymore because it will be overwritten by the update
+
 
 ## 3.0
 
