@@ -1,3 +1,58 @@
+## 4.0
+
+Minimum required pgBaseEnv version is 1.9.
+
+This version introduces new concept for standby management. Now each cluster in the configuration must be assigned a uniqname, which will identify the cluster in the configuration.
+
+In all standby related operation the uniqname will be used.
+
+Each cluster will have following properties:
+* Node number
+* Uniqname
+* Host
+
+Host will be defined at standby creation, it can be any hostname, including FQDN or IP address. Host will be used for ssh communication and to establish replication connection. It will be used in `primary_conninfo`.
+
+The uniqname will be used in replication slot names and as standby names.
+
+Switchover and all other commands accept now only uniqname as a target.
+
+If you add your first standby, then uniqname must be defined also for master node. To add fisrt standby use command like this:
+```
+pgoperate --standbymgr --add-standby --uniqname site2 --host 192.168.56.102 --master-uniqname site1 --master-host node1
+```
+
+As you can see, we provide `--master-uniqname` and `--master-host` arguments. It is required only fisrt time.
+
+We also used IP for site2 and nodename for site1.
+
+To switchover to site2 we will execute now:
+```
+pgoperate --standbymgr --switchover --target site2
+```
+
+The pgOperate deamon process was also modified according this new concept.
+
+# Upgrade to v4.0
+
+First update pgBaseEnv to version 1.9.
+
+If you dont have any standby clusters yet, then do the update as usual.
+
+If you already have a standby cluster managed by pgOperate, then you have two options:
+1. Remove the standby and then clear the $PGOPERATE_BASE/db folder on master site. After installing v4.0 create your standby again with assigning uniqnames to master and standby.
+2. Update pgOperate to 4.0 and do manual updates.
+
+If you will go with option 2, then you will need:
+1. Install new pgOperate 4.0
+2. On master site. Go to $PGOPERATE_BASE/db/repconf_<alias> of your cluster. Go into each subdirectory and create files `4_uniqname`, write uniqname into it. Then execute `pgoperate --standbymgr --sync-config`.
+3. Recreate replication slots on master. New replication slot names must include uniqname, like `slot_<uniqname>`.
+4. Update `primary_conninfo` on all standbys, change `application_name` to the uniqname of each modified standby.
+5. Update `primary_slot_name` on all standbys, change it to `site_<uniqname>`, where uniqname is the uniqname of the corresponding standby.
+
+
+
+
 ## 3.5
 * check.sh supports text (-t|--text) and json output (-j|--json)
 * check.sh supports specific metric checks (-c|--check)

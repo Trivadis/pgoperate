@@ -1,3 +1,5 @@
+# 18.10.2021 Aychin Added is_local_host function, which will be used in pgoperated and standbymgr.sh
+
 SET_CONF_PARAM_IN_CLUSTER=YES
 _IS_ROOT="$(id -u)"
 
@@ -11,6 +13,68 @@ prepare_logdir() {
   find $PGSQL_BASE/log/tools -mtime +$rdays -exec rm -f {} \;
 }
 
+
+# This function will be used to check if current host is master or not. Used in pgoperated and standbymgr.sh.
+# It will accept hostname or IP address and will check all local interfaces if they match to it.
+# Function will output YES and status 0 if match
+is_local_host() {
+    local input=$1
+    
+    matchlifs() {
+      # Get local interfaces. Spaces before and after the list required for exact comparision.
+      local ifs=" $(hostname -I) "
+      if [[ "$ifs" =~ " $1 " ]]; then
+        return 0
+      else
+        return 1
+      fi
+    }
+
+    # Check if the input is IP or hostname
+    if [[ $input =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+      # It is IP address
+      # Then check if the IP is in the list of local interfaces
+      matchlifs $input
+      if [[ $? -eq 0 ]]; then
+        echo "YES" && return 0
+      else
+        echo "NO" && return 1
+      fi
+      
+
+    else
+      # It is hostname
+      # Check /etc/hosts first
+      local hosts_ip=$(awk "/(\t| )$input$/" </etc/hosts | cut -f1)
+      if [[ ! -z $hosts_ip ]]; then
+        # If IP matches local interfaces, then we done
+        matchlifs $hosts_ip
+          if [[ $? -eq 0 ]]; then
+            echo "YES" && return 0
+          else
+            echo "NO" && return 1
+          fi
+
+      else
+        # There was no entry in /etc/hosts, check the DNS
+        local dns_ip=$(dig +time=2 +tries=2 +short -4 -r $input)
+
+           if [[ ! -z $dns_ip ]]; then
+             # If IP matches local interfaces, then we done
+             matchlifs $dns_ip
+             if [[ $? -eq 0 ]]; then
+               echo "YES" && return 0
+             else
+               echo "NO" && return 1
+             fi
+             
+           else
+             echo "NO" && return 1
+           fi
+      fi
+
+    fi
+}
 
 
 modifyFile() {

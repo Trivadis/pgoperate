@@ -18,6 +18,7 @@
 #
 # Change log:
 #   06.07.2020: Aychin: Initial version created
+#   19.10.2020: Aychin: uniqnames was introduced
 
 
 
@@ -28,19 +29,22 @@ help() {
 
  Available options:
 
- --check --target <hostname>          Check the SSH connection from local host to target host and back.
+ --check --host <hostname> --master-host <hostname>  Check the SSH connection from local host to target host and back.
  --status                             Show current configuration and status.
  --sync-config                        Synchronize config with real-time information and distribute on all configured nodes.
- --add-standby --target <hostname>    Add new standby cluster on spevified host. Must be executed on master host.
- --set-sync --target <hostname> [--bidirectional]  Set target standby to synchronous replication mode.  
- --set-async --target <hostname> [--bidirectional]  Set target standby to asynchronous replication mode.
+ --add-standby --uniqname <name> --host <hostname> [--master-uniqname <master name> --master-host <master hostname>]    Add new standby cluster on specified host. 
+                                          Provide uniq name and hostname to connect. If there was no configuration, then also master uniqname and hostname are required.  
+                                          Must be executed on master host.
+ --show-uniqname                      Get the uniqname of the local site.
+ --set-sync --target <uniqname> [--bidirectional]  Set target standby to synchronous replication mode.  
+ --set-async --target <uniqname> [--bidirectional]  Set target standby to asynchronous replication mode.
                                       If bidirectional option specified, then current master will be added as synchronous 
                                       standby to the target standbys configuration. To maintain synchronous replication after switchover.
- --switchover [--target <hostname>]   Switchover to standby. If target was not provided, then local host will be a target.
- --failover [--target <hostname>]     Failover to standby. If target was not provided, then local host will be a target.
+ --switchover [--target <uniqname>]   Switchover to standby. If target was not provided, then local site will be a target.
+ --failover [--target <uniqname>]     Failover to standby. If target was not provided, then local site will be a target.
                                         Old master will be stopped and marked as REINSTATE in configuration.
- --reinstate [--target <hostname>]    Reinstate old primary as new standby.
- --prepare-master [--target <hostname>]  Can be used to prepare the hostname for master role.
+ --reinstate [--target <uniqname>]    Reinstate old primary as new standby.
+ --prepare-master [--target <uniqname>]  Can be used to prepare the hostname for master role.
 
  --force     Can be used with any option to force some operations.
 
@@ -154,7 +158,9 @@ update_pg_hba() {
 }
 
 check_connection() {
-   $SSH $REMOTE_HOST "$SSH $LOCAL_HOST exit" >/dev/null 2>&1
+   local remote_host=$1
+   local local_host=$2
+   $SSH $remote_host "$SSH $local_host exit" >/dev/null 2>&1
    local RC=$?
    return $RC
 }
@@ -163,11 +169,18 @@ execute_remote() {
   local host=$1
   local alias=$2
   local cmd=$3
-  $SSH $host ". .pgbasenv_profile; pgsetenv $alias; $cmd"
+  $SSH $host ". ~/.PGBASENV_HOME; . \$PGBASENV_BASE/bin/pgsetenv.sh --noscan; pgsetenv $alias; $cmd"
   local RC=$?
   return $RC
 }
 
+execute_remote_noalias() {
+  local host=$1
+  local cmd=$2
+  $SSH $host ". ~/.PGBASENV_HOME; . \$PGBASENV_BASE/bin/pgsetenv.sh --noscan; $cmd"
+  local RC=$?
+  return $RC
+}
 
 create_repconf() {
   local tab=$1
@@ -188,11 +201,14 @@ get_new_row() {
   echo $lastRow
 }
 
+
+
 initialize_config() {
    mkdir -p $REPCONF/1
    echo "1" > $REPCONF/1/1_id
-   echo "$LOCAL_HOST" > $REPCONF/1/2_host
+   echo "$INPUT_MASTER_HOST" > $REPCONF/1/2_host
    echo "MASTER" > $REPCONF/1/3_role
+   echo "$INPUT_MASTER_UNIQNAME" > $REPCONF/1/4_uniqname
 }
 
 db_copy_to_standbys() {
@@ -234,6 +250,7 @@ get_actual_status() {
      fi
 
    fi
+   pgsetenv $PGBASENV_ALIAS
    if [[ $TVD_PGSTATUS == "UP" ]]; then
      start_time=$(psql -t -c "SELECT date_part('epoch', pg_postmaster_start_time())" | xargs | cut -d"." -f1)
    else
@@ -259,13 +276,14 @@ show_actual_status() {
 
 
 get_actual_status_from_nodes() {
-  local d host role stats RC
+  local d host role uniqname stats RC
   local res
   for d in $(ls $REPCONF); do
     host=$(cat $REPCONF/$d/2_host)
     role=$(cat $REPCONF/$d/3_role)
+    uniqname=$(cat $REPCONF/$d/4_uniqname)
     if [[ $role != "REINSTATE" ]]; then
-      if [[ $host == $LOCAL_HOST ]]; then
+      if [[ $(is_local_host $host) == "YES" ]]; then
         stats=$(get_actual_status)
         RC=$?
       else 
@@ -273,7 +291,7 @@ get_actual_status_from_nodes() {
         RC=$?
       fi
       if [[ $RC -eq 0 ]]; then
-         res=$(echo -e "$res\n$host|$stats")
+         res=$(echo -e "$res\n$host|$stats|$uniqname")
       fi
     fi
   done
@@ -286,9 +304,10 @@ db_sync_with_actual_data() {
   while IFS= read -r line; do
     local host=$(echo $line | cut -d'|' -f1)
     local role=$(echo $line | cut -d'|' -f2)
+    local uniqname=$(echo $line | cut -d'|' -f9)
     if [[ $role == "MASTER" && $master_found -eq 0 ]]; then
       master_found=1
-      db_set_new_master $host
+      db_set_new_master $uniqname
     fi
   done <<< "$actual"
 }
@@ -300,15 +319,16 @@ sync_config() {
   else
      local actual_status="$INPUT_PAYLOAD"
   fi
-  local actual_master=$(echo "$actual_status" | grep "MASTER")
-  actual_master=$(echo $actual_master | cut -d"|" -f1)
+  local actual_master_row=$(echo "$actual_status" | grep "MASTER")
+  local actual_master=$(echo $actual_master_row | cut -d"|" -f1)
+  local actual_master_uniqname=$(echo $actual_master_row | cut -d"|" -f9)
 
-  if [[ $actual_master == $LOCAL_HOST ]]; then
-    echo "Executing sync on master $LOCAL_HOST"
+  if [[ $(is_local_host $actual_master) == "YES" ]]; then
+    echo "Executing sync on master $actual_master_uniqname ($actual_master)"
     db_sync_with_actual_data "$actual_status"
     for d in $(ls $REPCONF); do
       if [[ $(cat $REPCONF/$d/3_role) == "MASTER" ]]; then
-         if [[ $(cat $REPCONF/$d/2_host) == "$LOCAL_HOST" ]]; then
+         if [[ $(is_local_host $(cat $REPCONF/$d/2_host)) == "YES" ]]; then
             db_copy_to_standbys
             return 0          
          fi
@@ -327,7 +347,7 @@ sync_config() {
 get_sync_standbys() {
   local master=$1
   
-  if [[ $LOCAL_HOST == $master ]]; then
+  if [[ $(is_local_host $master) == "YES" ]]; then
     local sync_standbys=$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PGPORT -d postgres -At -c "select string_agg(application_name||':'||sync_state, ',') from pg_stat_replication" 2>&1)
     echo "$sync_standbys"
   else
@@ -339,7 +359,7 @@ get_sync_standbys() {
 list_db() {
   local mode=$1
   local row
-  local nodenum nodename role actual_role cls_status wal_receiver apply_lag_mb tr_lag_mb tr_lag_min stats
+  local nodenum nodename role actual_role cls_status wal_receiver apply_lag_mb tr_lag_mb tr_lag_min stats uniqname
 
   if [[ ! -d $REPCONF ]]; then
      echo "No configuration exists on this host."
@@ -355,7 +375,7 @@ list_db() {
 
   local mode
   [[ ! -d $REPCONF ]] && return
-  [[ $mode != "list" ]] && printf "%-11s %-20s %-15s %9s %-5s %-10s %12s %15s %16s\n" "Node_number" "Node_name" "Role" "Mode" "State" "WAL_receiver" "Apply_lag_MB" "Transfer_lag_MB" "Transfer_lag_Min"
+  [[ $mode != "list" ]] && printf "%-11s %-10s %-20s %-15s %9s %-5s %-10s %12s %15s %16s\n" "Node_number" "Uniq_name" "Host" "Role" "Mode" "State" "WAL_receiver" "Apply_lag_MB" "Transfer_lag_MB" "Transfer_lag_Min"
   for row in $(ls $REPCONF); do
      nodenum="$(cat $REPCONF/$row/1_id)"
      nodename="$(cat $REPCONF/$row/2_host)"
@@ -367,13 +387,14 @@ list_db() {
      apply_lag_mb=$(echo $stats | cut -d"|" -f5)
      tr_lag_mb=$(echo $stats | cut -d"|" -f6)
      tr_lag_min=$(echo $stats | cut -d"|" -f7)
+     uniqname="$(cat $REPCONF/$row/4_uniqname)"
     
      if [[ $mode != "list" ]]; then 
-        [[ ",$sync_standbys," =~ ,site_${nodename}: ]] && mode=$(echo -e "${sync_standbys//,/\\n}" | grep "site_${nodename}:" | cut -d: -f2)
+        [[ ",$sync_standbys," =~ ,${uniqname}: ]] && mode=$(echo -e "${sync_standbys//,/\\n}" | grep "${uniqname}:" | cut -d: -f2)
         [[ $role != STANDBY ]] && mode=""
-        printf "%-11s %-20s %-15s %9s %-5s %-10s %12s %15s %16s\n" "$nodenum" "$nodename" "$role" "$mode" "$cls_status" "$wal_receiver" "$apply_lag_mb" "$tr_lag_mb" "$tr_lag_min"
+        printf "%-11s %-10s %-20s %-15s %9s %-5s %-10s %12s %15s %16s\n" "$nodenum" "$uniqname" "$nodename" "$role" "$mode" "$cls_status" "$wal_receiver" "$apply_lag_mb" "$tr_lag_mb" "$tr_lag_min"
      else
-        echo "$nodenum|$nodename|$role|$cls_status|$wal_receiver|$apply_lag_mb|$tr_lag_mb|$tr_lag_min"
+        echo "$nodenum|$nodename|$role|$cls_status|$wal_receiver|$apply_lag_mb|$tr_lag_mb|$tr_lag_min|$uniqname"
      fi
      stats=""
   done
@@ -382,13 +403,13 @@ list_db() {
 
 
 db_set_new_master() {
-  local master=$1
-  local row nodenum nodename role
+  local master_uniqname=$1
+  local row nodenum nodeuniqname role
   for row in $(ls $REPCONF); do
      nodenum="$(cat $REPCONF/$row/1_id)"
-     nodename="$(cat $REPCONF/$row/2_host)"
+     nodeuniqname="$(cat $REPCONF/$row/4_uniqname)"
      role="$(cat $REPCONF/$row/3_role)"
-     if [[ $nodename != $master ]]; then
+     if [[ $nodeuniqname != $master_uniqname ]]; then
         [[ $role != "REINSTATE" ]] && echo "STANDBY" > $REPCONF/$row/3_role
      else
         echo "MASTER" > $REPCONF/$row/3_role
@@ -398,13 +419,13 @@ db_set_new_master() {
 
 
 db_set_to_reinstate() {
-  local node=$1
-  local row nodenum nodename role
+  local uniqname=$1
+  local row nodenum nodeuniqname role
   for row in $(ls $REPCONF); do
      nodenum="$(cat $REPCONF/$row/1_id)"
-     nodename="$(cat $REPCONF/$row/2_host)"
+     nodeuniqname="$(cat $REPCONF/$row/4_uniqname)"
      role="$(cat $REPCONF/$row/3_role)"
-     if [[ $nodename == $node ]]; then
+     if [[ $nodeuniqname == $uniqname ]]; then
         echo "REINSTATE" > $REPCONF/$row/3_role
      fi
   done
@@ -412,10 +433,11 @@ db_set_to_reinstate() {
 
 
 db_add_standby() {
-   local hostname=$1
+   local uniqname=$1
+   local hostname=$2
    local row nodename
-   local db_host=$(db_get_by_hotsname $hostname)
-   if [[ -z $db_host ]]; then
+   local db_val=$(db_get_by_uniqname $uniqname)
+   if [[ -z $db_val ]]; then
      row=$(get_new_row $REPCONF)
      mkdir -p $REPCONF/$row
      local maxId=$(cat $REPCONF/*/1_id | sort -n | tail -1)
@@ -423,11 +445,12 @@ db_add_standby() {
      echo $maxId > $REPCONF/$row/1_id
      echo "$hostname" > $REPCONF/$row/2_host
      echo "STANDBY" > $REPCONF/$row/3_role
+     echo "$uniqname" > $REPCONF/$row/4_uniqname
    else
      
      for row in $(ls $REPCONF); do
-       nodename="$(cat $REPCONF/$row/2_host)"
-       if [[ $nodename == $hostname ]]; then
+       local uname="$(cat $REPCONF/$row/4_uniqname)"
+       if [[ $uname == $uniqname ]]; then
          echo "STANDBY" > $REPCONF/$row/3_role
        fi
      done
@@ -437,13 +460,13 @@ db_add_standby() {
 
 
 db_remove_host() {
-   local hostname=$1
+   local uniqname=$1
    local row nodename
    local RC
 
    for row in $(ls $REPCONF); do
-       nodename="$(cat $REPCONF/$row/2_host)"
-       if [[ $nodename == $hostname ]]; then
+       nodeuniqname="$(cat $REPCONF/$row/4_uniqname)"
+       if [[ $nodeuniqname == $uniqname ]]; then
          rm -Rf $REPCONF/$row
          RC=$?
        fi
@@ -458,18 +481,30 @@ db_get_master() {
   shopt -s nocasematch
   for d in $(ls $REPCONF); do
     if [[ $(cat $REPCONF/$d/3_role) == "MASTER" ]]; then
-      echo "$(cat $REPCONF/$d/1_id)|$(cat $REPCONF/$d/2_host)|$(cat $REPCONF/$d/3_role)"
+      echo "$(cat $REPCONF/$d/1_id)|$(cat $REPCONF/$d/2_host)|$(cat $REPCONF/$d/3_role)|$(cat $REPCONF/$d/4_uniqname)"
+    fi
+  done
+  shopt -u nocasematch
+}
+
+db_get_uniqname() {
+  local host=$1
+  local d
+  shopt -s nocasematch
+  for d in $(ls $REPCONF); do
+    if [[ $(cat $REPCONF/$d/2_host) == $host ]]; then
+      echo "$(cat $REPCONF/$d/4_uniqname)"
     fi
   done
   shopt -u nocasematch
 }
 
 db_get_standby() {
-  local host=$1
+  local uniqname=$1
   local d
   shopt -s nocasematch
   for d in $(ls $REPCONF); do
-    if [[ $(cat $REPCONF/$d/3_role) == "STANDBY" && $(cat $REPCONF/$d/2_host) == $host ]]; then
+    if [[ $(cat $REPCONF/$d/3_role) == "STANDBY" && $(cat $REPCONF/$d/4_uniqname) == $uniqname ]]; then
       echo "$(cat $REPCONF/$d/1_id)|$(cat $REPCONF/$d/2_host)|$(cat $REPCONF/$d/3_role)"
     fi
   done
@@ -490,6 +525,18 @@ db_get_by_hotsname() {
   shopt -u nocasematch
 }
 
+db_get_by_uniqname() {
+  local uniqname=$1
+  local d
+  shopt -s nocasematch
+  for d in $(ls $REPCONF); do
+    if [[ $(cat $REPCONF/$d/4_uniqname) == $uniqname ]]; then
+      echo "$(cat $REPCONF/$d/1_id)|$(cat $REPCONF/$d/2_host)|$(cat $REPCONF/$d/3_role)"
+      return 0
+    fi
+  done
+  shopt -u nocasematch
+}
 
 db_get_reinstate() {
   local host=$1
@@ -504,15 +551,6 @@ db_get_reinstate() {
 }
 
 
-get_remote_vars() {
-  local host=$1
-  local output="$($SSH $host ". .pgbasenv_profile; echo \$PGOPERATE_BASE")"
-  local RC=$?
-  if [[ $RC -eq 0 ]]; then
-    REMOTE_PGOPERATE_BASE=$output
-  fi
-  return $RC
-}
 
 copy_params_file_to_remote() {
   scp $PARAMETERS_FILE $REMOTE_HOST:$REMOTE_PGOPERATE_BASE/etc
@@ -549,8 +587,8 @@ create_replica_user() {
 
 
 create_replication_slot() {
-  local standby=$1
-  local slot_name="slot_${standby}"
+  local uniqname=$1
+  local slot_name="slot_${uniqname}"
   local output="$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d postgres -c "select true from pg_replication_slots where slot_name = '${slot_name}'" -t 2>&1)"
   local RC=$?
   if [[ -z $output ]]; then
@@ -615,13 +653,15 @@ get_param_value() {
 
 get_remote_vars() {
   local host=$1
-  local output="$($SSH $host ". .pgbasenv_profile; echo \$PGOPERATE_BASE")"
+  local output="$($SSH $host ". ~/.PGBASENV_HOME; . \$PGBASENV_BASE/bin/pgsetenv.sh --noscan; echo \$PGOPERATE_BASE")"
   local RC=$?
   if [[ $RC -eq 0 ]]; then
     REMOTE_PGOPERATE_BASE=$output
   fi
   return $RC
 }
+
+
 
 # Check if remote dir empty
 check_remote_dir() {
@@ -701,19 +741,19 @@ create_slave() {
    if [[ $TVD_PGVERSION -ge 12 ]]; then
      [[ ! -z $BACKUP_LOCATION && $DISABLE_BACKUP_SCRIPTS == "no" ]] && set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'"
      conninfo=$(grep primary_conninfo $PGSQL_BASE/data/postgresql.auto.conf | grep -oE "'.+'" | tail -1)
-     conninfo="$(eval "echo $conninfo") application_name=site_${LOCAL_HOST}"
+     conninfo="$(eval "echo $conninfo") application_name=${INPUT_SLAVE_UNIQNAME}"
      #SET_CONF_PARAM_IN_CLUSTER="NO"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_conninfo "'$conninfo'"
      #SET_CONF_PARAM_IN_CLUSTER="YES"
-     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_slot_name "'slot_${LOCAL_HOST}'"
+     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_slot_name "'slot_${INPUT_SLAVE_UNIQNAME}'"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_timeline "'latest'"
      touch $PGSQL_BASE/data/standby.signal
    else
      [[ ! -z $BACKUP_LOCATION && $DISABLE_BACKUP_SCRIPTS == "no" ]] && echo "restore_command = 'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'" >> $PGSQL_BASE/data/recovery.conf
      conninfo=$(grep primary_conninfo $PGSQL_BASE/data/recovery.conf | grep -oE "'.+'" | tail -1)
-     conninfo="$(eval "echo $conninfo") application_name=site_${LOCAL_HOST}"
+     conninfo="$(eval "echo $conninfo") application_name=${INPUT_SLAVE_UNIQNAME}"
      set_conf_param "$PGSQL_BASE/data/recovery.conf" primary_conninfo "'$conninfo'"
-     echo "primary_slot_name = 'slot_${LOCAL_HOST}'" >> $PGSQL_BASE/data/recovery.conf
+     echo "primary_slot_name = 'slot_${INPUT_SLAVE_UNIQNAME}'" >> $PGSQL_BASE/data/recovery.conf
      echo "recovery_target_timeline = 'latest'" >> $PGSQL_BASE/data/recovery.conf
    fi
 
@@ -739,8 +779,9 @@ create_slave() {
 
 
 prepare_master() {
-  local standby=$1
- 
+  #local standby=$1
+  local uniqname=$1
+
   if [[ -z $REPLICA_USER_PASSWORD ]]; then
     echo "ERROR: Set REPLICA_USER_PASSWORD in $PARAMETERS_FILE."
     return 1
@@ -752,19 +793,20 @@ prepare_master() {
     return 1
   fi
 
-  create_replication_slot $standby
+  create_replication_slot $uniqname
   RC=$?
   if [[ $RC -gt 0 ]]; then
     echo "ERROR: Failed to create replication slot. Check the error message from psql. Fix the issue and try again."
     return 1
   fi
 
+  # Create replication slots for standbys
   local config="$(list_db list)"
   if [[ ! -z $config ]]; then
     while IFS= read -r line; do
        local db_standby=$(echo $line | cut -d'|' -f2)
        if [[ $(echo $line | cut -d'|' -f3) == "STANDBY" ]]; then
-          create_replication_slot $db_standby          
+          create_replication_slot "$(db_get_uniqname $db_standby)"
        fi
     done <<< "$config"
   fi
@@ -790,12 +832,15 @@ prepare_master() {
 
 
 switch_master() {
-  local NEW_MASTER_HOST=$1
+  local NEW_MASTER_UNIQNAME=$1
   
+  local db_new_master=$(db_get_by_uniqname $NEW_MASTER_UNIQNAME)
+  local NEW_MASTER_HOST=$(echo $db_new_master | cut -d"|" -f2)
+
   local master_conninfo=$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PGPORT -d postgres -At -c "select setting from pg_settings where name='primary_conninfo'" 2>&1)
     if [[ ! -z $master_conninfo ]]; then
       local new_master_conninfo=$(echo $master_conninfo | sed "s/\(host=\)[^ ]* \(.*\)/\1$NEW_MASTER_HOST \2/g")
-      echo "Switching master to $NEW_MASTER_HOST on ${LOCAL_HOST}."
+      echo "Switching master $NEW_MASTER_UNIQNAME to $NEW_MASTER_HOST on ${LOCAL_HOST}."
       $PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PGPORT -d postgres -At -c "alter system set primary_conninfo='$new_master_conninfo'" >/dev/null 2>&1
       $PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PGPORT -d postgres -At -c "select pg_reload_conf()" >/dev/null 2>&1
     fi
@@ -804,22 +849,22 @@ switch_master() {
 
 
 point_standbys_to_new_master() {
-  local NEW_MASTER_HOST=$1
+  local NEW_MASTER_UNIQNAME=$1
   local _config="$(list_db list)"
 
   if [[ ! -z $_config ]]; then
     while IFS= read -r line; do
-       if [[ "$(echo $line | cut -d'|' -f3)" == "STANDBY" && "$(echo $line | cut -d'|' -f2)" != "$NEW_MASTER_HOST" ]]; then
+       if [[ "$(echo $line | cut -d'|' -f3)" == "STANDBY" && "$(echo $line | cut -d'|' -f9)" != "$NEW_MASTER_UNIQNAME" ]]; then
           local standby=$(echo $line | cut -d'|' -f2)
-          if [[ $standby != $LOCAL_HOST ]]; then
-            execute_remote $standby $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --switch-master --master-host $NEW_MASTER_HOST"
+          if [[ $(is_local_host $standby) == "NO" ]]; then
+            execute_remote $standby $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --switch-master --master-uniqname $NEW_MASTER_UNIQNAME"
             local RC=$?
           else
-            switch_master $NEW_MASTER_HOST
+            switch_master $NEW_MASTER_UNIQNAME
             local RC=$?
           fi
           if [[ $RC -gt 0 ]]; then
-            echo "ERROR: Failed to switch master on $standby."
+            echo "ERROR: Failed to switch master on host $standby."
             #return 1
           fi
           continue
@@ -830,22 +875,42 @@ point_standbys_to_new_master() {
 }
 
 add_slave() {
-  local REMOTE_HOST=$1
-  local RC
-
-  check_connection
-  RC=$?
-  if [[ $RC -gt 0 ]]; then
-    echo "ERROR: Passwordless ssh connection check failed between hosts $LOCAL_HOST and $REMOTE_HOST. Both directions must be configured."
-    return 1
-  fi
+  local STANDBY_UNIQNAME=$1
+  local REMOTE_HOST=$2
+  local RC MASTER_HOST
 
   create_repconf
   local db_master=$(db_get_master)
   if [[ ! -z $db_master ]]; then
-    [[ $(echo $db_master | cut -d"|" -f2) != $LOCAL_HOST ]] && error "Must be executed on master site" && return 1
+    MASTER_HOST=$(echo $db_master | cut -d"|" -f2)
+    [[ $(is_local_host $MASTER_HOST) == "NO" ]] && error "Must be executed on master site" && return 1
   else
+    if [[ -z $INPUT_MASTER_UNIQNAME || -z $INPUT_MASTER_HOST ]]; then
+       echo "ERROR: There is no master registered in repo, provide --master-uniqname and --master-host."
+       return 1
+    fi
     initialize_config
+    MASTER_HOST=$INPUT_MASTER_HOST
+  fi
+  
+  check_connection $REMOTE_HOST $MASTER_HOST
+  RC=$?
+  if [[ $RC -gt 0 ]]; then
+    echo "ERROR: Passwordless ssh connection check failed between hosts $MASTER_HOST and $REMOTE_HOST. Both directions must be configured."
+    return 1
+  fi
+
+  execute_remote_noalias $REMOTE_HOST "cat \$PGBASENV_BASE/etc/pghometab | grep -q \";${TVD_PGHOME_ALIAS}\$\""
+  if [[ $? -gt 0 ]]; then
+    echo "ERROR: Alias ${TVD_PGHOME_ALIAS} not exists on ${REMOTE_HOST}."
+    return 1
+  fi
+
+
+  local is_standby_exits=$(db_get_standby $STANDBY_UNIQNAME)
+  if [[ ! -z $is_standby_exits ]]; then
+     echo "ERROR: Standby with unique name $STANDBY_UNIQNAME already exists."
+     return 1
   fi
 
   get_remote_vars $REMOTE_HOST
@@ -854,16 +919,14 @@ add_slave() {
     echo "ERROR: Cannot get remote variables from $REMOTE_HOST. Check if romote host accessible and pgOperate installed on remote host."
     return 1
   fi
-
    
-  prepare_master $REMOTE_HOST
+  prepare_master $STANDBY_UNIQNAME
   RC=$?
   if [[ $RC -gt 0 ]]; then
     echo "ERROR: Failed to prepare for master role."
     return 1
   fi
   
-
   copy_params_file_to_remote
   RC=$?
   if [[ $RC -gt 0 ]]; then
@@ -882,19 +945,19 @@ add_slave() {
     fi
   fi
 
-  execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --create-slave --master-host $LOCAL_HOST --master-port $PGPORT"
+  execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --create-slave --uniqname $STANDBY_UNIQNAME --master-host $MASTER_HOST --master-port $PGPORT"
   RC=$?
   if [[ $RC -gt 0 ]]; then
     echo "ERROR: Failed to create slave cluster on $REMOTE_HOST."
     return 1
   fi
 
-  local db_standby=$(db_get_standby $REMOTE_HOST)
+  local db_standby=$(db_get_standby $STANDBY_UNIQNAME)
   if [[ -z $db_standby ]]; then
-    db_add_standby $REMOTE_HOST
+    db_add_standby $STANDBY_UNIQNAME $REMOTE_HOST
   fi
   echo "Synchronizing config with all standbys."
-  db_copy_to_standbys  
+  db_copy_to_standbys
 
 }
 
@@ -902,11 +965,17 @@ add_slave() {
 
 # Values for REWIND and DUPLICATE can be 0 or 1
 reinstate() {
-  local NEW_MASTER_HOST=$1
+  local NEW_MASTER_UNIQNAME=$1
   local REWIND=$2
   local DUPLICATE=$3
 
-  local REPLICATION_SLOT_NAME="slot_${LOCAL_HOST}"
+  local db_master=$(db_get_master)
+  local db_master_uniqname=$(echo $db_master | cut -d"|" -f4)
+  
+  local db_new_master=$(db_get_by_uniqname $NEW_MASTER_UNIQNAME)
+  local NEW_MASTER_HOST=$(echo $db_new_master | cut -d"|" -f2)
+
+  local REPLICATION_SLOT_NAME="slot_${db_master_uniqname}"
 
   on_exit() {
      local SET_AUTOSTART_TO=$1
@@ -936,8 +1005,8 @@ reinstate() {
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" hot_standby "on"
      grep -q "#replication#" $PGSQL_BASE/etc/pg_hba.conf
      [[ $? -gt 0 ]] && echo -e "# For replication. Connect from remote hosts. #replication#\nhost    replication     replica      0.0.0.0/0      scram-sha-256" >> $PGSQL_BASE/etc/pg_hba.conf
-     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_conninfo "'user=replica password=$REPLICA_USER_PASSWORD host=$NEW_MASTER_HOST port=$PGPORT application_name=site_${LOCAL_HOST}'"
-     set_conf_param "$PGSQL_BASE/data/postgresql.auto.conf" primary_conninfo "'user=replica password=$REPLICA_USER_PASSWORD host=$NEW_MASTER_HOST port=$PGPORT application_name=site_${LOCAL_HOST}'"
+     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_conninfo "'user=replica password=$REPLICA_USER_PASSWORD host=$NEW_MASTER_HOST port=$PGPORT application_name=${db_master_uniqname}'"
+     set_conf_param "$PGSQL_BASE/data/postgresql.auto.conf" primary_conninfo "'user=replica password=$REPLICA_USER_PASSWORD host=$NEW_MASTER_HOST port=$PGPORT application_name=${db_master_uniqname}'"
      [[ ! -z $BACKUP_LOCATION ]] && set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_slot_name "'${REPLICATION_SLOT_NAME}'"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_timeline "'latest'"
@@ -947,7 +1016,7 @@ reinstate() {
   create_recovery_file(){
     echo "
 standby_mode = 'on'
-primary_conninfo = 'user=replica password=''$REPLICA_USER_PASSWORD'' host=$NEW_MASTER_HOST port=$PGPORT application_name=site_${LOCAL_HOST}'
+primary_conninfo = 'user=replica password=''$REPLICA_USER_PASSWORD'' host=$NEW_MASTER_HOST port=$PGPORT application_name=${db_master_uniqname}'
 primary_slot_name = '${REPLICATION_SLOT_NAME}'
 recovery_target_timeline = 'latest'
 " > $PGSQL_BASE/data/recovery.conf
@@ -1090,25 +1159,29 @@ pgsetenv $PGBASENV_ALIAS
 
 
 remove_host() {
-  local REMOTE_HOST=$1
+  local UNIQNAME=$1
+  local REMOTE_HOST
   local RC RC1 RC2
 
   if [[ ! -d $REPCONF ]]; then
      return 0
   fi
 
+  local db_data=$(db_get_by_uniqname $UNIQNAME)
+  local REMOTE_HOST=$(echo $db_data | cut -d"|" -f2)
+
   local db_master=$(db_get_master)
   local db_master_host=$(echo $db_master | cut -d"|" -f2)
 
-  if [[ $db_master_host != $LOCAL_HOST ]]; then
+  if [[ $(is_local_host $db_master_host) == "NO" ]]; then
      local force_mode
      [[ $FORCE -eq 1 ]] && force_mode="--force" || force_mode=""
-     execute_remote $db_master_host $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --remove --target $REMOTE_HOST $force_mode"
+     execute_remote $db_master_host $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --remove --target $UNIQNAME $force_mode"
      RC=$?
      return $RC   
   fi
 
-  if [[ $REMOTE_HOST == $LOCAL_HOST ]]; then
+  if [[ $(is_local_host $REMOTE_HOST) == "YES" ]]; then
      echo "Master host to be removed. All configuration will be deleted."
      local d
      shopt -s nocasematch
@@ -1122,7 +1195,7 @@ remove_host() {
 
   else
      echo "Standby host will be removed."
-     db_remove_host $REMOTE_HOST
+     db_remove_host $UNIQNAME
      RC1=$?
      execute_remote $REMOTE_HOST $PGBASENV_ALIAS "rm -Rf $REPCONF"
      RC2=$?
@@ -1137,7 +1210,7 @@ remove_host() {
 
 
 add_host_to_sync_list() {
-  local HOST=$1
+  local UNIQNAME=$1
   local RC1 RC2
 
   local final_list
@@ -1145,13 +1218,13 @@ add_host_to_sync_list() {
      local current_list="$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d postgres -c "show synchronous_standby_names" -t | xargs 2>&1)"
 
      if [[ -z $current_list ]]; then
-        final_list="site_${HOST}"
+        final_list="${UNIQNAME}"
      else
         current_list=$(eval "echo $current_list")
-        if [[ ",${current_list}," =~ ,site_${HOST}, ]]; then
+        if [[ ",${current_list}," =~ ,${UNIQNAME}, ]]; then
            final_list="${current_list}"
         else
-           final_list="${current_list},site_${HOST}"
+           final_list="${current_list},${UNIQNAME}"
         fi
      fi
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" synchronous_commit "on"
@@ -1167,10 +1240,10 @@ add_host_to_sync_list() {
 
 
 rm_host_from_sync_list() {
-  local HOST=$1
+  local UNIQNAME=$1
 
   local RC1 RC2
-  local final_list="$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d postgres -c "select trim(regexp_replace(setting, 'site_${HOST}(\$| *,)', ''),',') from pg_settings where name='synchronous_standby_names'" -t | xargs 2>&1)"
+  local final_list="$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PG_PORT -d postgres -c "select trim(regexp_replace(setting, '${UNIQNAME}(\$| *,)', ''),',') from pg_settings where name='synchronous_standby_names'" -t | xargs 2>&1)"
 
   set_conf_param "$PGSQL_BASE/etc/postgresql.conf" synchronous_standby_names "'$final_list'"
   RC1=$?
@@ -1183,17 +1256,21 @@ rm_host_from_sync_list() {
 
 
 set_syncasync() {
-  local REMOTE_HOST=$1
+  local UNIQNAME=$1
   local RC1 RC2
+
+  local db_data=$(db_get_by_uniqname $UNIQNAME)
+  local REMOTE_HOST=$(echo $db_data | cut -d"|" -f2)
 
   local db_master=$(db_get_master)
   local db_master_host=$(echo $db_master | cut -d"|" -f2)
 
-  local mode
+  local mode samode
   [[ $MODE == "SETASYNC" ]] && mode="--set-async" || mode="--set-sync"
+  [[ $SYNCASYNC_MODE == "BIDIRECTIONAL" ]] && samode="--bidirectional" || samode=""
 
-  if [[ $db_master_host != $LOCAL_HOST ]]; then
-     execute_remote $db_master_host $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh $mode --target $REMOTE_HOST"
+  if [[ $(is_local_host $db_master_host) == "NO" ]]; then
+     execute_remote $db_master_host $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh $mode --target $UNIQNAME $samode"
      RC=$?
      return $RC
   fi
@@ -1202,28 +1279,30 @@ set_syncasync() {
   
   if [[ $MODE == "SETSYNC" ]]; then
     
-    add_host_to_sync_list $REMOTE_HOST
+    add_host_to_sync_list $UNIQNAME
     RC1=$?
-    
+
     if [[ $SYNCASYNC_MODE == "BIDIRECTIONAL" ]]; then
-       execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --exec --payload \"add_host_to_sync_list $LOCAL_HOST\""
+       set_local_uniqname
+       execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --exec --payload \"add_host_to_sync_list $LOCAL_SITE_UNIQNAME\""
        RC2=$?
     fi
 
   else
 
-    rm_host_from_sync_list $REMOTE_HOST
+    rm_host_from_sync_list $UNIQNAME
     RC1=$? 
 
     if [[ $SYNCASYNC_MODE == "BIDIRECTIONAL" ]]; then
-       execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --exec --payload \"rm_host_from_sync_list $LOCAL_HOST\""
+       set_local_uniqname
+       execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --exec --payload \"rm_host_from_sync_list $LOCAL_SITE_UNIQNAME\""
        RC2=$?
     fi
 
   fi
 
-  [[ $RC1 -gt 0 ]] && echo "ERROR: Failed to set synchronous_standby_names on master site $LOCAL_HOST"
-  [[ $RC2 -gt 0 ]] && echo "ERROR: Failed to set synchronous_standby_names on standby site $REMOTE_HOST"
+  [[ $RC1 -gt 0 ]] && echo "ERROR: Failed to set synchronous_standby_names on master site $LOCAL_SITE_UNIQNAME"
+  [[ $RC2 -gt 0 ]] && echo "ERROR: Failed to set synchronous_standby_names on standby site $UNIQNAME"
 
   return $((RC1+RC2))
   
@@ -1231,30 +1310,32 @@ set_syncasync() {
 
 
 switchover_to() {
-  local REMOTE_HOST=$1
-  local RC
+  local UNIQNAME=$1
+  local RC MASTER_HOST STANDBY_HOST
 
   local db_master=$(db_get_master)
-  local db_master_host=$(echo $db_master | cut -d"|" -f2)
+  local MASTER_HOST=$(echo $db_master | cut -d"|" -f2)
 
-  if [[ $db_master_host != $LOCAL_HOST ]]; then
+  # If current host is not master host, then command will be executed on the master
+  if [[ $(is_local_host $MASTER_HOST) == "NO" ]]; then
      local force_mode
      [[ $FORCE -eq 1 ]] && force_mode="--force" || force_mode=""
-     execute_remote $db_master_host $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --switchover --target $REMOTE_HOST $force_mode"
+     execute_remote $MASTER_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --switchover --target $UNIQNAME $force_mode"
      RC=$?
      return $RC   
   fi
 
-  local db_standby=$(db_get_standby $REMOTE_HOST)
+  local db_standby=$(db_get_standby $UNIQNAME)
   if [[ -z $db_standby ]]; then
-    error "No registered standby database on $REMOTE_HOST"
+    error "No registered standby database with unique name $UNIQNAME"
     return 1
   fi
+  STANDBY_HOST=$(echo $db_standby | cut -d"|" -f2)
 
-  check_connection
+  check_connection $STANDBY_HOST $MASTER_HOST
   RC=$?
   if [[ $RC -gt 0 ]]; then
-    echo "ERROR: Passwordless ssh connection check failed between hosts $LOCAL_HOST and $REMOTE_HOST. Both directions must be configured."
+    echo "ERROR: Passwordless ssh connection check failed between hosts $MASTER_HOST and $STANDBY_HOST. Both directions must be configured."
     return 1
   fi
 
@@ -1265,20 +1346,20 @@ switchover_to() {
 
   echo "Stopping master."
   $PGOPERATE_BASE/bin/control.sh stop >/dev/null
-  [[ $? -gt 0 ]] && error "Failed to stop master $LOCAL_HOST." && return 1
+  [[ $? -gt 0 ]] && error "Failed to stop master on $MASTER_HOST." && return 1
 
   echo "Getting master last checkpoint location and next XID."
   local master_ckpt_location=$($PG_BIN_HOME/pg_controldata | grep "Latest checkpoint location:" | cut -d: -f2 | xargs)
   local master_next_xid=$($PG_BIN_HOME/pg_controldata | grep "NextXID:" | cut -d: -f2,3 | xargs)
   master_next_xid=${master_next_xid//*:}
 
-  local remote_is_standby=$(execute_remote $REMOTE_HOST $PGBASENV_ALIAS "echo \$TVD_PGIS_STANDBY")
+  local remote_is_standby=$(execute_remote $STANDBY_HOST $PGBASENV_ALIAS "echo \$TVD_PGIS_STANDBY")
 
   if [[ $remote_is_standby == "YES" ]]; then
-    execute_remote $REMOTE_HOST $PGBASENV_ALIAS "psql -t -c \"CHECKPOINT\" > /dev/null"
-    local standby_next_xid=$(execute_remote $REMOTE_HOST $PGBASENV_ALIAS "pg_controldata | grep "NextXID:" | cut -d: -f2,3 | xargs")
+    execute_remote $STANDBY_HOST $PGBASENV_ALIAS "psql -t -c \"CHECKPOINT\" > /dev/null"
+    local standby_next_xid=$(execute_remote $STANDBY_HOST $PGBASENV_ALIAS "pg_controldata | grep "NextXID:" | cut -d: -f2,3 | xargs")
     standby_next_xid=${standby_next_xid//*:}
-    local standby_transfer_lag=$(execute_remote $REMOTE_HOST $PGBASENV_ALIAS "psql -t -c \"select pg_wal_lsn_diff('$master_ckpt_location', pg_last_wal_receive_lsn())\" | xargs")
+    local standby_transfer_lag=$(execute_remote $STANDBY_HOST $PGBASENV_ALIAS "psql -t -c \"select pg_wal_lsn_diff('$master_ckpt_location', pg_last_wal_receive_lsn())\" | xargs")
     local check_passed="YES"
 
     local xid_diff=$((master_next_xid-standby_next_xid))
@@ -1298,25 +1379,25 @@ switchover_to() {
        return 1
     fi
 
-    execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$TVD_PGHOME/bin/pg_ctl promote"
-    [[ $? -gt 0 ]] && error "Failed to promote slave cluster on $REMOTE_HOST." && return 1
-    execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --set-master"
-    #execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --sync-config"
+    execute_remote $STANDBY_HOST $PGBASENV_ALIAS "\$TVD_PGHOME/bin/pg_ctl promote"
+    [[ $? -gt 0 ]] && error "Failed to promote slave cluster on host $STANDBY_HOST." && return 1
+    execute_remote $STANDBY_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --set-master --target $UNIQNAME"
+    #execute_remote $STANDBY_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --sync-config"
   else
     echo "Remote is already promoted."
   fi
 
-  execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --prepare-master --target $LOCAL_HOST --force"
+  execute_remote $STANDBY_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --prepare-master --target $UNIQNAME --force"
   RC=$?
   if [[ $RC -gt 0 ]]; then
-    error "Failed to prepare for master role on $REMOTE_HOST."
+    error "Failed to prepare for master role on host $STANDBY_HOST."
     return 1
   fi
 
-  point_standbys_to_new_master $REMOTE_HOST 
+  point_standbys_to_new_master $UNIQNAME 
 
   FORCE=1
-  reinstate $REMOTE_HOST
+  reinstate $UNIQNAME
   RC=$?
   
 
@@ -1329,33 +1410,43 @@ switchover_to() {
 
 
 reinstate_cluster() {
-  local TARGET_HOST=$1
+  local UNIQNAME=$1
   local RC
+
+  local db_target=$(db_get_by_uniqname $UNIQNAME)
+
+  if [[ -z $db_target ]]; then
+     echo "ERROR: No cluster with unique name $UNIQNAME exists."
+     return 1
+  fi
+
+  local TARGET_HOST=$(echo $db_target | cut -d"|" -f2)
 
   local db_master=$(db_get_master)
   local db_master_host=$(echo $db_master | cut -d"|" -f2)
+  local db_master_uniqname=$(echo $db_master | cut -d"|" -f4)
 
-  if [[ $LOCAL_HOST != $TARGET_HOST ]]; then
-     execute_remote $TARGET_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --reinstate --target $TARGET_HOST --force"
+  if [[ $(is_local_host $TARGET_HOST) == "NO" ]]; then
+     execute_remote $TARGET_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --reinstate --target $UNIQNAME --force"
      RC=$?
      return $RC
   fi
 
-  if [[ $LOCAL_HOST == $db_master_host ]]; then
-       prepare_master $TARGET_HOST
+  if [[ $(is_local_host $db_master_host) == "YES" ]]; then
+       prepare_master $UNIQNAME
   else
-       execute_remote $db_master_host $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --prepare-master --target $TARGET_HOST"
+       execute_remote $db_master_host $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --prepare-master --target $UNIQNAME"
   fi
 
   FORCE=1
-  reinstate $db_master_host
+  reinstate $db_master_uniqname
   RC=$?
 
   if [[ $RC -eq 0 ]]; then
-    if [[ $LOCAL_HOST == $db_master_host ]]; then
-       db_add_standby $TARGET_HOST
+    if [[ $(is_local_host $db_master_host) == "YES" ]]; then
+       db_add_standby $UNIQNAME $TARGET_HOST
     else
-       execute_remote $db_master_host $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --exec --payload \"db_add_standby $TARGET_HOST\""
+       execute_remote $db_master_host $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --exec --payload \"db_add_standby $UNIQNAME $TARGET_HOST\""
     fi
   fi
 
@@ -1368,37 +1459,41 @@ reinstate_cluster() {
 
 
 failover_to() {
-  local REMOTE_HOST=$1
-  local RC
+  local UNIQNAME=$1
+  local RC MASTER_HOST STANDBY_HOST
+
+  local db_data=$(db_get_by_uniqname $UNIQNAME)
+  local REMOTE_HOST=$(echo $db_data | cut -d"|" -f2)
 
   local db_master=$(db_get_master)
   local db_master_host=$(echo $db_master | cut -d"|" -f2)
+  local db_master_uniqname=$(echo $db_master | cut -d"|" -f4)
 
   #if [[ $db_master_host == $LOCAL_HOST && $FORCE -ne 1 ]]; then
   #   echo "Execute failover on one of the standby hosts or use --force option."
   #   return 1
   #fi
 
-  if [[ $LOCAL_HOST != $REMOTE_HOST ]]; then
-     execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --failover --target $REMOTE_HOST --force"
+  if [[ $(is_local_host $REMOTE_HOST) == "NO" ]]; then
+     execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --failover --target $UNIQNAME --force"
      RC=$?
      return $RC   
   fi
 
-  local db_standby=$(db_get_standby $REMOTE_HOST)
+  local db_standby=$(db_get_standby $UNIQNAME)
   if [[ -z $db_standby ]]; then
-    error "No registered standby database on $REMOTE_HOST"
+    error "No registered standby database with unique name $UNIQNAME"
     return 1
   fi
 
-  if [[ $LOCAL_HOST != $REMOTE_HOST ]]; then
-    check_connection
-    RC=$?
-    if [[ $RC -gt 0 ]]; then
-      echo "ERROR: Passwordless ssh connection check failed between hosts $LOCAL_HOST and $REMOTE_HOST. Both directions must be configured."
-      return 1
-    fi
-  fi
+  #if [[ $LOCAL_HOST != $REMOTE_HOST ]]; then
+  #  check_connection
+  #  RC=$?
+  #  if [[ $RC -gt 0 ]]; then
+  #    echo "ERROR: Passwordless ssh connection check failed between hosts $LOCAL_HOST and $REMOTE_HOST. Both directions must be configured."
+  #    return 1
+  #  fi
+  #fi
 
   # Check master
   local master_info=$(execute_remote $db_master_host $PGBASENV_ALIAS "echo \$TVD_PGSTATUS:\$TVD_PGIS_STANDBY")
@@ -1412,7 +1507,7 @@ failover_to() {
      fi
   fi
 
-  if [[ $LOCAL_HOST != $REMOTE_HOST ]]; then
+  if [[ $(is_local_host $REMOTE_HOST) == "NO" ]]; then
     local remote_is_standby=$(execute_remote $REMOTE_HOST $PGBASENV_ALIAS "echo \$TVD_PGIS_STANDBY")
   else
     local remote_is_standby=$TVD_PGIS_STANDBY
@@ -1420,27 +1515,27 @@ failover_to() {
 
   
   if [[ $remote_is_standby == "YES" ]]; then
-    if [[ $LOCAL_HOST != $REMOTE_HOST ]]; then
+    if [[ $(is_local_host $REMOTE_HOST) == "NO" ]]; then
        execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$TVD_PGHOME/bin/pg_ctl promote"
        [[ $? -gt 0 ]] && error "Failed to promote slave cluster on $REMOTE_HOST." && return 1
-       execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --set-master"
-       execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --set-reinstate --target $db_master_host"
+       execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --set-master --target $UNIQNAME"
+       execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --set-reinstate --target $db_master_uniqname"
     else
        $TVD_PGHOME/bin/pg_ctl promote
        [[ $? -gt 0 ]] && error "Failed to promote slave cluster on $REMOTE_HOST." && return 1
-       db_set_new_master $REMOTE_HOST
-       db_set_to_reinstate $db_master_host
+       db_set_new_master $UNIQNAME
+       db_set_to_reinstate $db_master_uniqname
     fi
   else
     echo "Remote is already promoted."
   fi
 
-  if [[ $LOCAL_HOST != $REMOTE_HOST ]]; then
-    execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --prepare-master --target $LOCAL_HOST --force"
+  if [[ $(is_local_host $REMOTE_HOST) == "NO" ]]; then
+    execute_remote $REMOTE_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --prepare-master --target $UNIQNAME --force"
     RC=$?
   else
     FORCE=1
-    prepare_master $REMOTE_HOST
+    prepare_master $UNIQNAME
     RC=$?
   fi
 
@@ -1449,7 +1544,7 @@ failover_to() {
     return 1
   fi
 
-  point_standbys_to_new_master $REMOTE_HOST 
+  point_standbys_to_new_master $UNIQNAME 
   
   $0 --sync-config
 
@@ -1458,6 +1553,29 @@ failover_to() {
 }
 
 
+
+set_local_uniqname() {
+    local list=$(list_db list)
+    while IFS="|" read _ nameline statusline _ _ _ _ _ uniqnameline; do
+        if [[ $(is_local_host $nameline) == "YES" ]]; then
+            LOCAL_SITE_STATUS=$statusline
+            LOCAL_SITE_UNIQNAME=$uniqnameline
+            break
+        fi
+    done <<< "$(echo "$list")"
+}
+
+
+check_uniqname() {
+  local uniqname=$1
+
+  if [[ ${#uniqname} -le 16 ]]; then
+     if [[ $uniqname =~ ^[a-z][a-z0-9]+$ ]]; then
+        return 0
+     fi
+  fi
+  return 1
+}
 
 ###################################################################################
 # MAIN
@@ -1483,6 +1601,7 @@ while [[ $1 ]]; do
  elif [[ "$1" == --create-slave ]]; then MODE="CREATE_SLAVE" && shift
  elif [[ "$1" == --prepare-master ]]; then MODE="PREPARE_MASTER" && shift
  elif [[ "$1" == --status ]]; then MODE="SHOW_STATUS" && shift
+ elif [[ "$1" == --show-uniqname ]]; then MODE="SHOW_UNIQNAME" && shift
  elif [[ "$1" == --list ]]; then SHOW_STATUS_MODE="list" && shift
  elif [[ "$1" == --get-local-status ]]; then MODE="GET_LOCAL_STATUS" && shift
  elif [[ "$1" == --local-status ]]; then MODE="SHOW_LOCAL_STATUS" && shift
@@ -1498,7 +1617,10 @@ while [[ $1 ]]; do
  elif [[ "$1" == --bidirectional ]]; then SYNCASYNC_MODE="BIDIRECTIONAL" && shift
  elif [[ "$1" == --exec ]]; then MODE="EXEC" && shift
  elif [[ "$1" == --switch-master ]]; then MODE="SWITCH_MASTER" && shift
- elif [[ "$1" == --target ]]; then shift && ca $1 && INPUT_SLAVE_HOST=$1 && shift
+ elif [[ "$1" == --target ]]; then shift && ca $1 && INPUT_SLAVE_UNIQNAME=$1 && shift
+ elif [[ "$1" == --uniqname ]]; then shift && ca $1 && INPUT_SLAVE_UNIQNAME=$1 && shift
+ elif [[ "$1" == --host ]]; then shift && ca $1 && INPUT_SLAVE_HOST=$1 && shift
+ elif [[ "$1" == --master-uniqname ]]; then shift && ca $1 && INPUT_MASTER_UNIQNAME=$1 && shift
  elif [[ "$1" == --master-host ]]; then shift && ca $1 && INPUT_MASTER_HOST=$1 && shift
  elif [[ "$1" == --master-port ]]; then shift && ca $1 && INPUT_MASTER_PORT=$1 && shift
  elif [[ "$1" == --payload ]]; then shift && ca $1 && INPUT_PAYLOAD=$1 && shift
@@ -1520,11 +1642,26 @@ echo -e >> $LOGFILE
 
 if [[ $MODE == "ADD_SLAVE" ]]; then
 
-  if [[ -z $INPUT_SLAVE_HOST ]]; then
-     echo "Error: Add slave mode requires --target argument."
+  if [[ -z $INPUT_SLAVE_HOST || -z $INPUT_SLAVE_UNIQNAME ]]; then
+     echo "Error: Add slave mode requires --uniqname and --host arguments."
      exit 1
   fi
-  add_slave $INPUT_SLAVE_HOST
+  
+  if [[ ! -z $INPUT_SLAVE_UNIQNAME ]]; then
+     if ! check_uniqname $INPUT_SLAVE_UNIQNAME; then
+        echo "ERROR: Uniqname $INPUT_SLAVE_UNIQNAME is not eligible. Uniqname must be only small letters and numbers, start with letter and not longer than 16 characters."
+        exit 1
+     fi
+  fi
+
+  if [[ ! -z $INPUT_MASTER_UNIQNAME ]]; then
+     if ! check_uniqname $INPUT_MASTER_UNIQNAME; then
+        echo "ERROR: Uniqname $INPUT_MASTER_UNIQNAME is not eligible. Uniqname must be only small letters and numbers, start with letter and not longer than 16 characters."
+        exit 1
+     fi
+  fi
+
+  add_slave $INPUT_SLAVE_UNIQNAME $INPUT_SLAVE_HOST
   RC=$?
 
 
@@ -1541,11 +1678,16 @@ elif [[ $MODE == "EXEC" ]]; then
 elif [[ $MODE == "CHECK" ]]; then
 
   if [[ -z $INPUT_SLAVE_HOST ]]; then
-     echo "Error: Check mode requires --target argument."
+     echo "Error: Check mode requires --host argument."
      exit 1
   fi
-  REMOTE_HOST=$INPUT_SLAVE_HOST
-  check_connection
+
+  if [[ -z $INPUT_MASTER_HOST ]]; then
+     echo "Master host will be localhost ${LOCAL_HOST}."
+     INPUT_MASTER_HOST=$LOCAL_HOST
+  fi
+  
+  check_connection $INPUT_SLAVE_HOST $INPUT_MASTER_HOST
   RC=$?
   if [[ $RC -eq 0 ]]; then
     echo "Success."
@@ -1555,10 +1697,11 @@ elif [[ $MODE == "CHECK" ]]; then
 
 elif [[ $MODE == "REMOVE_HOST" ]]; then
 
-  if [[ -z $INPUT_SLAVE_HOST ]]; then
-     INPUT_SLAVE_HOST=$LOCAL_HOST
+  if [[ -z $INPUT_SLAVE_UNIQNAME ]]; then
+     set_local_uniqname
+     INPUT_SLAVE_UNIQNAME=$LOCAL_SITE_UNIQNAME
   fi
-  remove_host $INPUT_SLAVE_HOST
+  remove_host $INPUT_SLAVE_UNIQNAME
   RC=$?
 
 
@@ -1573,43 +1716,74 @@ elif [[ $MODE == "CREATE_SLAVE" ]]; then
 
 elif [[ $MODE == "PREPARE_MASTER" ]]; then
 
-  if [[ -z $INPUT_SLAVE_HOST ]]; then
-     INPUT_SLAVE_HOST=$LOCAL_HOST
+  if [[ -z $INPUT_SLAVE_UNIQNAME ]]; then
+     set_local_uniqname
+     if [[ -z $LOCAL_SITE_UNIQNAME ]]; then
+        echo "Error: Prepare master mode requires --target <uniqname> argument, but cant identify uniqname of local site."
+        exit 1
+     else
+        INPUT_SLAVE_UNIQNAME=$LOCAL_SITE_UNIQNAME
+     fi
   fi
-  prepare_master $INPUT_SLAVE_HOST
+  prepare_master $INPUT_SLAVE_UNIQNAME
   RC=$?
 
 
 elif [[ $MODE == "SWITCHOVER" ]]; then
 
-  if [[ -z $INPUT_SLAVE_HOST ]]; then
-     INPUT_SLAVE_HOST=$LOCAL_HOST
+  if [[ -z $INPUT_SLAVE_UNIQNAME ]]; then
+     set_local_uniqname
+     if [[ -z $LOCAL_SITE_UNIQNAME ]]; then
+        echo "Error: Switchover mode requires --target <uniqname> argument, but cant identify uniqname of local site."
+        exit 1
+     else
+        INPUT_SLAVE_UNIQNAME=$LOCAL_SITE_UNIQNAME
+     fi
   fi
-  switchover_to $INPUT_SLAVE_HOST
+  switchover_to $INPUT_SLAVE_UNIQNAME
   RC=$?
 
 elif [[ $MODE == "SETASYNC" || $MODE == "SETSYNC" ]]; then
 
-  if [[ -z $INPUT_SLAVE_HOST ]]; then
-     INPUT_SLAVE_HOST=$LOCAL_HOST
+  if [[ -z $INPUT_SLAVE_UNIQNAME ]]; then
+     set_local_uniqname
+     if [[ -z $LOCAL_SITE_UNIQNAME ]]; then
+       echo "Error: This mode requires --target <uniqname> argument, but cant identify uniqname of local site."
+       exit 1
+     else
+       INPUT_SLAVE_UNIQNAME=$LOCAL_HOST
+     fi
   fi
-  set_syncasync $INPUT_SLAVE_HOST
+  set_syncasync $INPUT_SLAVE_UNIQNAME
   RC=$?
 
 elif [[ $MODE == "FAILOVER" ]]; then
 
-  if [[ -z $INPUT_SLAVE_HOST ]]; then
-     INPUT_SLAVE_HOST=$LOCAL_HOST
+  if [[ -z $INPUT_SLAVE_UNIQNAME ]]; then
+     set_local_uniqname
+     if [[ -z $LOCAL_SITE_UNIQNAME ]]; then
+        echo "Error: This mode requires --target <uniqname> argument, but cant identify uniqname of local site."
+        exit 1
+     else
+        INPUT_SLAVE_UNIQNAME=$LOCAL_SITE_UNIQNAME
+     fi
   fi
-  failover_to $INPUT_SLAVE_HOST
+  failover_to $INPUT_SLAVE_UNIQNAME
   RC=$?
 
 elif [[ $MODE == "REINSTATE" ]]; then
 
-  if [[ -z $INPUT_SLAVE_HOST ]]; then
-     INPUT_SLAVE_HOST=$LOCAL_HOST
+  if [[ -z $INPUT_SLAVE_UNIQNAME ]]; then
+     set_local_uniqname
+     if [[ -z $LOCAL_SITE_UNIQNAME ]]; then
+        echo "Error: Reinstate mode requires --target <uniqname> argument, but cant identify uniqname of local site."
+        exit 1
+     else
+        INPUT_SLAVE_UNIQNAME=$LOCAL_SITE_UNIQNAME
+     fi
   fi
-  reinstate_cluster $INPUT_SLAVE_HOST
+
+  reinstate_cluster $INPUT_SLAVE_UNIQNAME
   RC=$?
 
 
@@ -1618,6 +1792,11 @@ elif [[ $MODE == "SHOW_STATUS" ]]; then
   list_db $SHOW_STATUS_MODE
   RC=$?
 
+elif [[ $MODE == "SHOW_UNIQNAME" ]]; then
+
+  set_local_uniqname
+  RC=$?
+  echo $LOCAL_SITE_UNIQNAME
 
 elif [[ $MODE == "SYNC_CONFIG" ]]; then
 
@@ -1626,17 +1805,32 @@ elif [[ $MODE == "SYNC_CONFIG" ]]; then
 
 elif [[ $MODE == "SET_MASTER" ]]; then
 
-  db_set_new_master $LOCAL_HOST
+  if [[ -z $INPUT_SLAVE_UNIQNAME ]]; then
+     set_local_uniqname
+     if [[ -z $LOCAL_SITE_UNIQNAME ]]; then
+        echo "Error: Set master mode requires --target <uniqname> argument, but cant identify uniqname of local site."
+        exit 1
+     else
+        INPUT_SLAVE_UNIQNAME=$LOCAL_SITE_UNIQNAME
+     fi
+  fi
+
+  db_set_new_master $INPUT_SLAVE_UNIQNAME
   RC=$?
 
 elif [[ $MODE == "SET_REINSTATE" ]]; then
   
-  if [[ -z $INPUT_SLAVE_HOST ]]; then
-     echo "Error: Set reinstate mode requires --target argument."
-     exit 1
+  if [[ -z $INPUT_SLAVE_UNIQNAME ]]; then
+     set_local_uniqname
+     if [[ -z $LOCAL_SITE_UNIQNAME ]]; then
+        echo "Error: Set reinstate mode requires --target <uniqname> argument, but cant identify uniqname of local site."
+        exit 1
+     else
+        INPUT_SLAVE_UNIQNAME=$LOCAL_SITE_UNIQNAME
+     fi
   fi
 
-  db_set_to_reinstate $INPUT_SLAVE_HOST
+  db_set_to_reinstate $INPUT_SLAVE_UNIQNAME
   RC=$?
 
 elif [[ $MODE == "GET_LOCAL_STATUS" ]]; then
@@ -1651,11 +1845,11 @@ elif [[ $MODE == "SHOW_LOCAL_STATUS" ]]; then
 
 elif [[ $MODE == "SWITCH_MASTER" ]]; then
 
-  if [[ -z $INPUT_MASTER_HOST ]]; then
-     echo "Error: Switch master mode requires --master-host argument."
+  if [[ -z $INPUT_MASTER_UNIQNAME ]]; then
+     echo "Error: Switch master mode requires --master-uniqname argument, but cant identify uniqname of local site."
      exit 1
   fi
-  switch_master $INPUT_MASTER_HOST
+  switch_master $INPUT_MASTER_UNIQNAME
   RC=$?
 
 fi

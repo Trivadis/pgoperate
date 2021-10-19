@@ -91,6 +91,7 @@ fi
   declare -a FAIL_COUNT
 
   source $HOME/.pgbasenv_profile
+  source $PGOPERATE_BASE/lib/shared.lib
   while true; do
     unset clustertab
     clustertab="$(pgup --list)"
@@ -115,13 +116,23 @@ fi
         if [[ $AUTOSTART == "YES" ]]; then
           if [[ $INTENDED_STATE == "UP" && $STATUS == "DOWN" ]]; then
             $PGOPERATE_BASE/bin/standbymgr.sh --sync_config
-            D_V1=$($PGOPERATE_BASE/bin/standbymgr.sh --status --list)
+            D_V1="$($PGOPERATE_BASE/bin/standbymgr.sh --status --list)"
             echo "$D_V1" >> $LOG_FILE
-            local_status=$($PGOPERATE_BASE/bin/standbymgr.sh --status --list | grep "|$(hostname -s)|" | cut -d"|" -f3)
-            RC=$?
-            if [[ $RC -eq 0 && $local_status == "REINSTATE" ]]; then
-                echo "$(date): Cluster ${ALIAS} will be reinstated now." >> $LOG_FILE
-                reinstate=$($PGOPERATE_BASE/bin/standbymgr.sh --reinstate)
+            #local_status=$(echo "$D_V1" | grep "|$(hostname -s)|" | cut -d"|" -f3)
+            #RC=$?
+            
+            # Get the status and uniqname of the local host
+            while IFS="|" read _ nameline statusline _ _ _ _ _ uniqnameline; do
+              if [[ $(is_local_host $nameline) == "YES" ]]; then
+                 local_status=$statusline
+                 local_uniqname=$uniqnameline
+                 break
+              fi
+            done <<< "$(echo "$D_V1")"
+
+            if [[ $local_status == "REINSTATE" ]]; then
+                echo "$(date): Cluster ${ALIAS} will be reinstated now ($local_uniqname)." >> $LOG_FILE
+                reinstate=$($PGOPERATE_BASE/bin/standbymgr.sh --reinstate --target $local_uniqname)
                 if [[ $? -eq 0 ]]; then
                    echo "$(date): ${ALIAS} Reinstate was successful." >> $LOG_FILE
                    [[ -p $PIPE_FILE ]] && echo "SUCCESS" >$PIPE_FILE
@@ -152,9 +163,10 @@ fi
                     standby=$($PGOPERATE_BASE/bin/standbymgr.sh --status --list | grep "STANDBY|UP" | sort -n | head -1)
                     if [[ $? -eq 0 && ! -z $standby ]]; then
                        standby_node_number=$(echo $standby | cut -d"|" -f1)
-                       standby_host=$(echo $standby | cut -d"|" -f2)
-                       echo "$(date): Failcount for Cluster ${ALIAS} is $v_fail_count and autofailover is enabled. Will failover to ${standby_host} node number ${standby_node_number}." >> $LOG_FILE
-                       failover=$($PGOPERATE_BASE/bin/standbymgr.sh --failover --target ${standby_host})
+                       standby_host=$(echo $standby | cut -d"|" -f9)
+                       standby_uniqname=$(echo $standby | cut -d"|" -f9)
+                       echo "$(date): Failcount for Cluster ${ALIAS} is $v_fail_count and autofailover is enabled. Will failover to ${standby_uniqname} number ${standby_node_number} on host ${standby_host}." >> $LOG_FILE
+                       failover=$($PGOPERATE_BASE/bin/standbymgr.sh --failover --target ${standby_uniqname})
                        if [[ $? -eq 0 ]]; then
                           echo "$(date): ${ALIAS} Failover was successful." >> $LOG_FILE
                           FAIL_COUNT[$ALIAS]=0

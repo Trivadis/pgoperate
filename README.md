@@ -9,7 +9,7 @@ Check the [Change Log](CHANGELOG.md) for new features and changes introduced in 
 
 pgOperate requires pgBaseEnv.
 
-First pgBasEnv must be installed.
+First pgBasEnv must be installed. Minimum required version is 1.9.
 
 
 ## License
@@ -63,23 +63,27 @@ Correct backup subdirectory will be identified and Cluster will be restored to t
 
 ### Create standby
 
-If sales cluster runs on node1 and we want to create standby on node2, then execute add standby command on master site node1.
+If sales cluster runs on node1 and we want to create standby on node2, then execute add standby command on master host node1.
+
+Defined first uniqname for master and standby and execute:
 
 ```
-node1 $ pgoperate --standbymgr --add-standby --target node2
+node1 $ pgoperate --standbymgr --add-standby --host node2 --uniqname site2 --master-host node1 --master-uniqname site1
 ```
+
+Note: You can use any network interface with --host and --master-host. It can be hostname, FQDN or IP address.
 
 ### Switchover to standby
 
 With pgOperate it is very easy to switchover to standby.
 
 ```
-node1 $ pgoperate --standbymgr --switchover --target node2
+node1 $ pgoperate --standbymgr --switchover --target site2
 ``` 
 
 ### Failover to standby 
 
-If you are on standby site node2, then
+If you are on standby site site2, then
 
 ```
 node2 $ pgoperate --standbymgr --failover
@@ -90,11 +94,17 @@ node2 $ pgoperate --standbymgr --failover
 ```
 $ pgoperate --standbymgr --status
 
-Node_number Node_name            Role            State WAL_receiver Apply_lag_MB Transfer_lag_MB Transfer_lag_Min
-1           node1                MASTER          UP
-2           node2                STANDBY         UP    streaming             0               0                0
-3           node3                STANDBY         UP    streaming             0               0                0 
+Node_number Uniq_name        Node_name   Role     Mode     State WAL_receiver Apply_lag_MB Transfer_lag_MB Transfer_lag_Min
+1           node1            site1       MASTER            UP
+2           192.168.56.102   site2       STANDBY  async    UP    streaming             0               0                0
+3           node3.pg.org     site3       STANDBY  sync     UP    streaming             0               0                0 
 
+```
+
+### Switch site2 to synchronous mode
+
+```
+$ pgoperate --standbymgr --set-sync --target site2
 ```
 
 
@@ -713,35 +723,53 @@ Cluster pg12 will be deleted. Cluster base directory including $PGDATA will be r
 
 Script to add and manage standby clusters.
 
+Each cluster in the configuration must be assigned a uniqname, which will identify the cluster in the configuration.
+
+In all standby related operation the uniqname will be used.
+
+Each cluster will have following properties:
+* Node number
+* Uniqname
+* Host
+
+Host will be defined at standby creation, it can be any hostname, including FQDN or IP address. Host will be used for ssh communication and to establish replication connection. It will be used in `primary_conninfo`.
+
+The uniqname will be used in replication slot names and as standby names.
+
+Switchover and all other commands accept uniqname as a target.
+
 Can be executed over `pgoperate --standbymgr`.
 
 Available options:
 ```
- --check --target <hostname>          Check the SSH connection from local host to target host and back.
+ --check --host <hostname> --master-host <hostname>  Check the SSH connection from local host to target host and back.
  --status                             Show current configuration and status.
  --sync-config                        Synchronize config with real-time information and distribute on all configured nodes.
- --add-standby --target <hostname>    Add new standby cluster on spevified host. Must be executed on master host.
- --set-sync --target <hostname> [--bidirectional]  Set target standby to synchronous replication mode.  
- --set-async --target <hostname> [--bidirectional]  Set target standby to asynchronous replication mode.
-                                      If bidirectional option specified, then current master will be added as synchronous 
+ --add-standby --uniqname <name> --host <hostname> [--master-uniqname <master name> --master-host <master hostname>]    Add new standby cluster on specified host.
+                                          Provide uniq name and hostname to connect. If there was no configuration, then also master uniqname and hostname are required.
+                                          Must be executed on master host.
+ --show-uniqname                      Get the uniqname of the local site.
+ --set-sync --target <uniqname> [--bidirectional]  Set target standby to synchronous replication mode.
+ --set-async --target <uniqname> [--bidirectional]  Set target standby to asynchronous replication mode.
+                                      If bidirectional option specified, then current master will be added as synchronous
                                       standby to the target standbys configuration. To maintain synchronous replication after switchover.
- --switchover [--target <hostname>]   Switchover to standby. If target was not provided, then local host will be a target.
- --failover [--target <hostname>]     Failover to standby. If target was not provided, then local host will be a target.
+ --switchover [--target <uniqname>]   Switchover to standby. If target was not provided, then local site will be a target.
+ --failover [--target <uniqname>]     Failover to standby. If target was not provided, then local site will be a target.
                                         Old master will be stopped and marked as REINSTATE in configuration.
- --reinstate [--target <hostname>]    Reinstate old primary as new standby.
- --prepare-master [--target <hostname>]  Can be used to prepare the hostname for master role.
+ --reinstate [--target <uniqname>]    Reinstate old primary as new standby.
+ --prepare-master [--target <uniqname>]  Can be used to prepare the hostname for master role.
 
  --force     Can be used with any option to force some operations.
 
 ```
 
 Prerequisites for `standbymgr` are:
-* pgBaseEnv and pgOperate must be installed on remote host
-* Passwordless ssh connection must be configured between all members of the configuration
+* pgBaseEnv (minimum 1.9) and pgOperate must be installed on remote host
+* Passwordless ssh connection must be configured between all members of the configuration over the interface used in the `--host` or `--master-host` parameters.
 
 All commands except `--add-standby` can be executed on any host of the configuration.
 
-During switchover, last checkpoint location and next XID will be compared between master and target standby. If there will be risk of data loss, then switchover will not happen. In such cases the reason of the lag must be detected and eliminated or `--failover` option must be used to execute failover.
+During switchover, last checkpoint location and next XID will be compared between master and standby. If there will be risk of data loss, then switchover will not happen. In such cases the reason of the lag must be detected and eliminated or `--failover` option must be used to execute failover.
 
 After failover previous master will be stopped if accessable and its status will be set to REINSTATE. You must execute `--reinstate` on this cluster to convert it to new standby.
 
