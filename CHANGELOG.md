@@ -33,7 +33,7 @@ pgoperate --standbymgr --switchover --target site2
 
 The pgOperate deamon process was also modified according this new concept.
 
-# Upgrade to v4.0
+### Upgrade to v4.0
 
 First update pgBaseEnv to version 1.9.
 
