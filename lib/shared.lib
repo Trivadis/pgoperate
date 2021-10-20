@@ -45,7 +45,7 @@ is_local_host() {
     else
       # It is hostname
       # Check /etc/hosts first
-      local hosts_ip=$(awk "/(\t| )$input$/" </etc/hosts | cut -f1)
+      local hosts_ip=$(awk "/(\t| )$input/" </etc/hosts | awk '{ print $1 }')
       if [[ ! -z $hosts_ip ]]; then
         # If IP matches local interfaces, then we done
         matchlifs $hosts_ip
