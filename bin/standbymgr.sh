@@ -158,13 +158,8 @@ update_pg_hba() {
 }
 
 check_connection() {
-   if [[ $LOCAL_HOST != $1 ]]; then
-     local remote_host=$2
-     local local_host=$1
-   else
-     local remote_host=$1
-     local local_host=$2
-   fi
+   local remote_host=$1
+   local local_host=$2
    $SSH $remote_host "$SSH $local_host exit" >/dev/null 2>&1
    local RC=$?
    return $RC
