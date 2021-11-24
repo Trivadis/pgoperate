@@ -1,2 +1,3 @@
 etc/*.conf
 log/*
+.DS_Store
