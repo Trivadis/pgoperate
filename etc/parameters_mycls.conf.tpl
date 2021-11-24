@@ -109,6 +109,14 @@ BACKUP_REDUNDANCY=5
 # This parameter, if set, overrides BACKUP_REDUNDANCY parameter.
 BACKUP_RETENTION_DAYS=7
 
+###########################
+# Restore related parameters
+###########################
+
+# add a custom restore command if using a third party backup and recovery tool
+# example for pgbackrest RESTORE_COMMAND=pgbackrest --stanza=db01 archive-get %f "%p"
+RESTORE_COMMAND=''
+
 
 
 ################################
