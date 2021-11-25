@@ -747,6 +747,7 @@ create_slave() {
      #SET_CONF_PARAM_IN_CLUSTER="YES"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_slot_name "'slot_${INPUT_SLAVE_UNIQNAME}'"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_timeline "'latest'"
+     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'$RESTORE_COMMAND'"
      touch $PGSQL_BASE/data/standby.signal
    else
      [[ ! -z $BACKUP_LOCATION && $DISABLE_BACKUP_SCRIPTS == "no" ]] && echo "restore_command = 'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'" >> $PGSQL_BASE/data/recovery.conf
