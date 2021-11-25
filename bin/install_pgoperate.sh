@@ -79,8 +79,8 @@ echo -e "\n>>> INSTALLATION STEP: Add aliases to \$PGBASENV_BASE/etc/pgbasenv_st
 sed -i "/# pgOperate/d" $PGBASENV_BASE/etc/pgbasenv_standard.conf
 sed -i "/alias pgoperate=.*/d" $PGBASENV_BASE/etc/pgbasenv_standard.conf
 sed -i "/alias cdbase=.*/d" $PGBASENV_BASE/etc/pgbasenv_standard.conf
-sed -i "alias cdpo=.*/d" $PGBASENV_BASE/etc/pgbasenv_standard.conf
-sed -i "alias cdpo.etc=.*/d" $PGBASENV_BASE/etc/pgbasenv_standard.conf
+sed -i "/alias cdpo=.*/d" $PGBASENV_BASE/etc/pgbasenv_standard.conf
+sed -i "/alias cdpo.etc=.*/d" $PGBASENV_BASE/etc/pgbasenv_standard.conf
 
 echo "
 # pgOperate
