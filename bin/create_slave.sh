@@ -193,7 +193,7 @@ if [[ $TVD_PGVERSION -ge 12 ]]; then
   set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_conninfo "$conninfo"
   set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_slot_name "'${REPLICATION_SLOT_NAME//,*}'"
   set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_timeline "'latest'"
-  set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "$RESTORE_COMMAND"
+  #set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "$RESTORE_COMMAND"
   touch $PGSQL_BASE/data/standby.signal
 else
   [[ ! -z $BACKUP_LOCATION ]] && echo "restore_command = 'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'" >> $PGSQL_BASE/data/recovery.conf
