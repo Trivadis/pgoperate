@@ -1,3 +1,9 @@
+## 4.1
+* New parameter `RESTORE_COMMAND` added to conf file. If `DISABLE_BACKUP_SCRIPTS` is activated, `restore_command` will be set to  v `RESTORE_COMMAND` in postgresql.conf on standby sites
+* added two new aliases for pgoperate: 
+  * cdpo : change to $PGOPERATE_BASE
+  * cdpo.etc: change to $PGOPERATE_BASE/etc
+
 ## 4.0
 
 Minimum required pgBaseEnv version is 1.9.
