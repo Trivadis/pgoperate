@@ -720,6 +720,8 @@ create_slave() {
       rm -rf $PGDATA/*
    fi
 
+
+
    #echo "Copying data directory from $MASTER_HOST to the $PGSQL_BASE/data"
    export PGPASSWORD="$REPLICA_USER_PASSWORD"
    $PG_BIN_HOME/pg_basebackup --wal-method=stream -D $PGSQL_BASE/data -U replica -h $MASTER_HOST -p $MASTER_PORT -R
@@ -1008,9 +1010,10 @@ reinstate() {
      [[ $? -gt 0 ]] && echo -e "# For replication. Connect from remote hosts. #replication#\nhost    replication     replica      0.0.0.0/0      scram-sha-256" >> $PGSQL_BASE/etc/pg_hba.conf
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_conninfo "'user=replica password=$REPLICA_USER_PASSWORD host=$NEW_MASTER_HOST port=$PGPORT application_name=${db_master_uniqname}'"
      set_conf_param "$PGSQL_BASE/data/postgresql.auto.conf" primary_conninfo "'user=replica password=$REPLICA_USER_PASSWORD host=$NEW_MASTER_HOST port=$PGPORT application_name=${db_master_uniqname}'"
-     [[ ! -z $BACKUP_LOCATION ]] && set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'"
+     [[ ! -z $BACKUP_LOCATION && $DISABLE_BACKUP_SCRIPTS == "no" ]] && set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_slot_name "'${REPLICATION_SLOT_NAME}'"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_timeline "'latest'"
+     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'$RESTORE_COMMAND'"
      touch $PGSQL_BASE/data/standby.signal 
   }
 

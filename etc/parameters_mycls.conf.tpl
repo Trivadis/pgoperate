@@ -114,6 +114,7 @@ BACKUP_RETENTION_DAYS=7
 ###########################
 
 # add a custom restore command if using a third party backup and recovery tool
+# default restore command for pgoperate 'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'
 # example for pgbackrest RESTORE_COMMAND=pgbackrest --stanza=db01 archive-get %f "%p"
 RESTORE_COMMAND=''
 
