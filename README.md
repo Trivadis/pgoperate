@@ -510,6 +510,7 @@ Parameters:
 | **BACKUP_LOCATION**       | `$PGSQL_BASE/backup`                     | Directory to store backup files.                                             |
 | **BACKUP_REDUNDANCY**     | `5`                                      | Backup redundancy. Count of backups to keep.                                                 |
 | **BACKUP_RETENTION_DAYS**  | `7`                                      | Backup retention in days. Keeps backups required to restore so much days back.  This parameter, if set, overrides BACKUP_REDUNDANCY.                                                |
+| **RESTORE_COMMAND**  |                                       | custom restore command, will be written to postgresql.conf on standby site if `DISABLE_BACKUP_SCRIPTS` is set to `yes`
 | **MASTER_HOST**           |                                          | !DEPRECATED! Replication related. The name or ip address of the master cluster.           |
 | **MASTER_PORT**           |                                          | !DEPRECATED! Replication related. The PORT of the master cluster. If not specified then `$PGPORT` will be used.           |
 | **REPLICATION_SLOT_NAME** | `slave001, slave002, slave003  | !DEPRECATED! Replication related. Replication slot names to be created in master cluster. More than one replication slot separated by comma can be specified.|
