@@ -720,6 +720,8 @@ create_slave() {
       rm -rf $PGDATA/*
    fi
 
+
+
    #echo "Copying data directory from $MASTER_HOST to the $PGSQL_BASE/data"
    export PGPASSWORD="$REPLICA_USER_PASSWORD"
    $PG_BIN_HOME/pg_basebackup --wal-method=stream -D $PGSQL_BASE/data -U replica -h $MASTER_HOST -p $MASTER_PORT -R
@@ -747,6 +749,7 @@ create_slave() {
      #SET_CONF_PARAM_IN_CLUSTER="YES"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_slot_name "'slot_${INPUT_SLAVE_UNIQNAME}'"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_timeline "'latest'"
+     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'$RESTORE_COMMAND'"
      touch $PGSQL_BASE/data/standby.signal
    else
      [[ ! -z $BACKUP_LOCATION && $DISABLE_BACKUP_SCRIPTS == "no" ]] && echo "restore_command = 'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'" >> $PGSQL_BASE/data/recovery.conf
@@ -1007,9 +1010,10 @@ reinstate() {
      [[ $? -gt 0 ]] && echo -e "# For replication. Connect from remote hosts. #replication#\nhost    replication     replica      0.0.0.0/0      scram-sha-256" >> $PGSQL_BASE/etc/pg_hba.conf
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_conninfo "'user=replica password=$REPLICA_USER_PASSWORD host=$NEW_MASTER_HOST port=$PGPORT application_name=${db_master_uniqname}'"
      set_conf_param "$PGSQL_BASE/data/postgresql.auto.conf" primary_conninfo "'user=replica password=$REPLICA_USER_PASSWORD host=$NEW_MASTER_HOST port=$PGPORT application_name=${db_master_uniqname}'"
-     [[ ! -z $BACKUP_LOCATION ]] && set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'"
+     [[ ! -z $BACKUP_LOCATION && $DISABLE_BACKUP_SCRIPTS == "no" ]] && set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_slot_name "'${REPLICATION_SLOT_NAME}'"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_timeline "'latest'"
+     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'$RESTORE_COMMAND'"
      touch $PGSQL_BASE/data/standby.signal 
   }
 
@@ -1402,6 +1406,14 @@ switchover_to() {
   
 
   $0 --sync-config
+
+  
+  #"cleanup orphan rep slots"
+
+  rep_slot=$(exec_pg "select slot_name from pg_replication_slots where slot_name like('%$UNIQNAME%')" | xargs)
+  res=$(exec_pg "select pg_drop_replication_slot('$rep_slot')")
+  res2=$(execute_remote $STANDBY_HOST $PGBASENV_ALIAS "$PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PGPORT -d postgres -c \"select pg_drop_replication_slot('slot_$UNIQNAME')\" ")
+
 
   return $RC
 

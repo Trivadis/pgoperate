@@ -224,6 +224,7 @@ set_conf_param "$PGSQL_BASE/etc/postgresql.conf" listen_addresses "'0.0.0.0'"
 set_conf_param "$PGSQL_BASE/etc/postgresql.conf" unix_socket_directories "'/var/run/postgresql'"
 set_conf_param "$PGSQL_BASE/etc/postgresql.conf" unix_socket_permissions "0770"
 set_conf_param "$PGSQL_BASE/etc/postgresql.conf" search_path "'\"\$user\", public'"
+
 # Replication related
 set_conf_param "$PGSQL_BASE/etc/postgresql.conf" wal_level "replica"
 set_conf_param "$PGSQL_BASE/etc/postgresql.conf" max_wal_senders "10"
