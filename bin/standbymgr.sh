@@ -1407,6 +1407,14 @@ switchover_to() {
 
   $0 --sync-config
 
+  
+  #"cleanup orphan rep slots"
+
+  rep_slot=$(exec_pg "select slot_name from pg_replication_slots where slot_name like('%$UNIQNAME%')" | xargs)
+  res=$(exec_pg "select pg_drop_replication_slot('$rep_slot')")
+  res2=$(execute_remote $STANDBY_HOST $PGBASENV_ALIAS "$PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PGPORT -d postgres -c \"select pg_drop_replication_slot('slot_$UNIQNAME')\" ")
+
+
   return $RC
 
 }
