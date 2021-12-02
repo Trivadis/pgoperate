@@ -3,6 +3,7 @@
 * added two new aliases for pgoperate: 
   * cdpo : change to $PGOPERATE_BASE
   * cdpo.etc: change to $PGOPERATE_BASE/etc
+* fixed an issue with standbymgr tool and repslots
 
 ## 4.0
 
