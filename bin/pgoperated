@@ -45,7 +45,7 @@ It is safe to execute 'reload' option, which will call pg_ctl reload on all runn
 "
 }
 
-PID_FILE=$PGOPERATE_BASE/bin/pgoperate-deamon.pid
+PID_FILE=$PGOPERATE_BASE/run/pgoperate-deamon.pid
 LOG_FILE=$PGOPERATE_BASE/log/pgoperate-deamon.log
 
 

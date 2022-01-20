@@ -70,7 +70,7 @@ else
 fi
 }
 
-PID_FILE=$PGOPERATE_BASE/bin/pgoperate-deamon.pid
+PID_FILE=$PGOPERATE_BASE/run/pgoperate-deamon.pid
 PIPE_FILE=/tmp/.pgoperate.${PGBASENV_ALIAS}
 LOCK_FILE=/tmp/.pgoperate.${PGBASENV_ALIAS}.lock
 
