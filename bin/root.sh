@@ -18,6 +18,8 @@
 #
 # Change log:
 #   06.07.2020: Aychin: Initial version created
+#   20.01.2022: Michael: adapted PID file location
+
 
 # Executes root related action.
 
@@ -48,7 +50,7 @@ LimitNOFILE=infinity
 LimitNPROC=infinity
 LimitCORE=infinity
 Environment=PGOPERATE_BASE=${PGOPERATE_BASE}
-PIDFile=${PGOPERATE_BASE}/bin/pgoperate-deamon.pid
+PIDFile=${PGOPERATE_BASE}/run/pgoperate-deamon.pid
 Restart=on-failure
 TimeoutSec=300
 

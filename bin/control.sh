@@ -18,7 +18,7 @@
 #
 # Change log:
 #   05.02.2020: Aychin: Initial version created
-
+#   20.01.2022: Michael: adapted PID file location
 
 help() {
   echo "
