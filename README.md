@@ -467,6 +467,27 @@ pgoperated can automatically failover the monitored instance after `FAILCOUNT` f
 
 After failover will be initiated, old master will be left in `REINSTATE` state. If there will be attempt to start it using `pgoperate --start` or automatically by pgoperated, then reintate will be tried.
 
+### SELinux
+If SELinux is enabled on your system you might face some issues starting the pgoperated-postgres daemon. 
+
+The following steps shoud fix the issue.
+
+```bash
+# install semanage utility
+sudo yum install policycoreutils-python-utils
+
+# Set and restore the context (adapt the paths to your needs)
+semanage fcontext -a -t bin_t "/var/lib/pgsql/tvdtoolbox/pgbasenv/bin(/.*)?"
+semanage fcontext -a -t bin_t "/var/lib/pgsql/tvdtoolbox/pgoperate/bin(/.*)?"
+
+restorecon -R -v /var/lib/pgsql/tvdtoolbox/pgbasenv/bin
+
+# daemon startup should work now
+systemctl start pgoperated-postgres.service
+
+# check the new context (adapt the path to your needs)
+ls -lZ /var/lib/pgsql/tvdtoolbox/pgbasenv/bin
+```
 
 ## About parameters_\<alias\>.conf
 ---
