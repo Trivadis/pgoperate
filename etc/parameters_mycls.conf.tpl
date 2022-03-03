@@ -58,6 +58,9 @@ PG_SUPERUSER_PWD=
 # Percentage of the host memory to use for cluster shared buffers
 PCTMEM=30
 
+# set custom wal-segsize if needed, defaults to 16MB
+PG_WAL_SEGSIZE=
+
 # To enable SSL for this cluster or not.
 ENABLE_SSL=no
 
