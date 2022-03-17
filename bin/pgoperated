@@ -48,7 +48,7 @@ It is safe to execute 'reload' option, which will call pg_ctl reload on all runn
 
 PID_FILE=$PGOPERATE_BASE/run/pgoperate-deamon.pid
 LOG_FILE=$PGOPERATE_BASE/log/pgoperate-deamon.log
-
+username=$USER
 
 if [[ $1 == "kill" ]]; then
 # Send SIGTERM to the pgoperated daemon
@@ -103,7 +103,7 @@ fi
       PIPE_FILE=/tmp/.pgoperate.${ALIAS}
       tab=$(echo "$clustertab" | grep "^${ALIAS};")
     (
-      echo "" > /tmp/pgoperated_subshell.tmp
+      echo "" > /tmp/pgoperated_subshell_$username.tmp
       pgsetenv $ALIAS
       if [[ ! -z $tab ]]; then
         PGPORT=$(echo $tab | cut -d";" -f4)
@@ -202,13 +202,13 @@ fi
         fi
       fi
       
-      echo "FAIL_COUNT[$ALIAS]=${FAIL_COUNT[$ALIAS]}" >> /tmp/pgoperated_subshell.tmp
+      echo "FAIL_COUNT[$ALIAS]=${FAIL_COUNT[$ALIAS]}" >> /tmp/pgoperated_subshell_$username.tmp
 
     ) &
 
       wait $!
       
-      [[ -f /tmp/pgoperated_subshell.tmp ]] && eval "$(cat /tmp/pgoperated_subshell.tmp)" && rm /tmp/pgoperated_subshell.tmp
+      [[ -f /tmp/pgoperated_subshell_$username.tmp ]] && eval "$(cat /tmp/pgoperated_subshell_$username.tmp)" && rm /tmp/pgoperated_subshell_$username.tmp
 
       unset ALIAS pfile pfile_base tab
     done < <(ls -1 $PGOPERATE_BASE/etc/parameters_*.conf)
