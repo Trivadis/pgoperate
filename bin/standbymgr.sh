@@ -29,7 +29,7 @@ help() {
 
  Available options:
 
- --check --host <hostname> --master-host <hostname>  Check the SSH connection from local host to target host and back.
+ --check --local-host <hostname> --remote-host <hostname>  Check the SSH connection from local host to remote host and back.
  --status                             Show current configuration and status.
  --sync-config                        Synchronize config with real-time information and distribute on all configured nodes.
  --add-standby --uniqname <name> --host <hostname> [--master-uniqname <master name> --master-host <master hostname>]    Add new standby cluster on specified host. 
