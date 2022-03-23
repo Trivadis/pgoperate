@@ -1636,6 +1636,9 @@ while [[ $1 ]]; do
  elif [[ "$1" == --master-host ]]; then shift && ca $1 && INPUT_MASTER_HOST=$1 && shift
  elif [[ "$1" == --master-port ]]; then shift && ca $1 && INPUT_MASTER_PORT=$1 && shift
  elif [[ "$1" == --payload ]]; then shift && ca $1 && INPUT_PAYLOAD=$1 && shift
+ elif [[ "$1" == --remote-host ]]; then shift && ca $1 && REMOTE_HOST=$1 && shift
+ elif [[ "$1" == --local-host ]]; then shift && ca $1 && LOCAL_HOST=$1 && shift
+ 
  else 
    echo "Error: Invalid argument $1" 
    exit 1 
@@ -1689,17 +1692,18 @@ elif [[ $MODE == "EXEC" ]]; then
 
 elif [[ $MODE == "CHECK" ]]; then
 
-  if [[ -z $INPUT_SLAVE_HOST ]]; then
-     echo "Error: Check mode requires --host argument."
+  if [[ -z $REMOTE_HOST ]]; then
+     echo "Error: Check mode requires --remote-host argument."
      exit 1
   fi
 
   if [[ -z $INPUT_MASTER_HOST ]]; then
      echo "Master host will be localhost ${LOCAL_HOST}."
-     INPUT_MASTER_HOST=$LOCAL_HOST
   fi
   
-  check_connection $INPUT_SLAVE_HOST $INPUT_MASTER_HOST
+  #check_connection $INPUT_SLAVE_HOST $INPUT_MASTER_HOST
+  check_connection $REMOTE_HOST $LOCAL_HOST 
+
   RC=$?
   if [[ $RC -eq 0 ]]; then
     echo "Success."

@@ -117,7 +117,7 @@ PGSQL_BASE=$_SAVE_
 
 read -p "Cluster $PG_CLUSTER_ALIAS will be deleted. Cluster base directory including \$PGDATA will be removed. Continue? [yes/no]: "
 echo    # (optional) move to a new line
-if [[ ! $REPLY == "yes" ]]; then
+if [[ ! $REPLY == "yes" ]] && [[ ! $REPLY == "y" ]]; then
   echo "Nothing done."
   exit 0
 fi

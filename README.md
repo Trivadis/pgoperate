@@ -272,9 +272,11 @@ $PGOPERATE_BASE ┐
                 │        ├── custom_check.lib
                 │        └── shared.lib
                 │
-                └─── bundle ┐
-                            ├── install_pgoperate.sh
-                            └── pgoperate-<version>.tar
+                ├─── bundle ┐
+                │           ├── install_pgoperate.sh
+                │           └── pgoperate-<version>.tar
+                └─── run ┐
+                         └── pgoperate-deamon.pid
 ```
 
 Each installation will have its own single parameters file. The name format of the parameter filename is important, it must be `parameters_<alias>.conf`. Where `alias` is the pgBasEnv alias of the PostgreSQL cluster. It will be used to set its environment.
@@ -467,6 +469,27 @@ pgoperated can automatically failover the monitored instance after `FAILCOUNT` f
 
 After failover will be initiated, old master will be left in `REINSTATE` state. If there will be attempt to start it using `pgoperate --start` or automatically by pgoperated, then reintate will be tried.
 
+### SELinux
+If SELinux is enabled on your system you might face some issues starting the pgoperated-postgres daemon. 
+
+The following steps shoud fix the issue.
+
+```bash
+# install semanage utility
+sudo yum install policycoreutils-python-utils
+
+# Set and restore the context (adapt the paths to your needs)
+semanage fcontext -a -t bin_t "/var/lib/pgsql/tvdtoolbox/pgbasenv/bin(/.*)?"
+semanage fcontext -a -t bin_t "/var/lib/pgsql/tvdtoolbox/pgoperate/bin(/.*)?"
+
+restorecon -R -v /var/lib/pgsql/tvdtoolbox/pgbasenv/bin
+
+# daemon startup should work now
+systemctl start pgoperated-postgres.service
+
+# check the new context (adapt the path to your needs)
+ls -lZ /var/lib/pgsql/tvdtoolbox/pgbasenv/bin
+```
 
 ## About parameters_\<alias\>.conf
 ---
@@ -498,6 +521,7 @@ Parameters:
 | **PG_SUPERUSER**          | `postgres`                               | The name of the superuser to create during setup.                            |
 | **PG_SUPERUSER_PWD**  |                                          | The password for the superuser account.                             | 
 | **PCTMEM**                | `30`                                     | The percent of the host memory to use for PostgreSQL shared buffers.         |
+| **PG_WAL_SEGSIZE**        | `16`                                     | Set a custom WAL segment size in MB which is used as parameter --wal-segsize for initdb, defaults to 16MB      |
 | **ENABLE_SSL**            | `no`                                    | Will try to copy `CA_CERT`, `SERVER_CERT` and `SERVER_KEY` to the `$PGSQL_BASE/cert` directory and then enable SSL connections to cluster. If some of these certificates will not be found then `ENABLE_SSL` will be forced to "no".                                                                 |
 | **CA_CERT**               |                                          | File with CA certificate. Usually called root.crt.                           |
 | **SERVER_CERT**           |                                          | File with SSL server certificate. Usually called server.crt.                 |
@@ -743,7 +767,7 @@ Can be executed over `pgoperate --standbymgr`.
 
 Available options:
 ```
- --check --host <hostname> --master-host <hostname>  Check the SSH connection from local host to target host and back.
+ --check --local-host <hostname> --remote-host <hostname>  Check the SSH connection from local host to remote host and back.
  --status                             Show current configuration and status.
  --sync-config                        Synchronize config with real-time information and distribute on all configured nodes.
  --add-standby --uniqname <name> --host <hostname> [--master-uniqname <master name> --master-host <master hostname>]    Add new standby cluster on specified host.

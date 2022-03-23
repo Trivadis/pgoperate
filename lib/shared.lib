@@ -194,10 +194,16 @@ else
    local PG_CHKSUM=""
 fi
 
-if [[ $SILENT -eq 1 ]]; then
-  $PG_BIN_HOME/initdb -D $PGSQL_BASE/data --encoding=$PG_ENCODING $PG_CHKSUM --username=$PG_SUPERUSER >/dev/null 2>&1
+if [[ -n $PG_WAL_SEGSIZE ]]; then
+   local PG_WAL="--wal-segsize="$PG_WAL_SEGSIZE
 else
-  $PG_BIN_HOME/initdb -D $PGSQL_BASE/data --encoding=$PG_ENCODING $PG_CHKSUM --username=$PG_SUPERUSER
+   local PG_WAL=""
+fi
+
+if [[ $SILENT -eq 1 ]]; then
+  $PG_BIN_HOME/initdb -D $PGSQL_BASE/data --encoding=$PG_ENCODING $PG_CHKSUM $PG_WAL --username=$PG_SUPERUSER >/dev/null 2>&1
+else
+  $PG_BIN_HOME/initdb -D $PGSQL_BASE/data --encoding=$PG_ENCODING $PG_CHKSUM $PG_WAL --username=$PG_SUPERUSER
 fi
 
 }
