@@ -1,7 +1,7 @@
 ## 4.2 
-* New parameter `PG_WAL_SEGSIZE` to define a customer WAL segment size [(issue #20)](https://github.com/Trivadis/pgoperate/issues/20)
+* New parameter `PG_WAL_SEGSIZE` to define a custom WAL segment size [(issue #20)](https://github.com/Trivadis/pgoperate/issues/20)
 * Changed the path for the pgoperate daemon PID file from $PGOPERATE_BASE/bin to $PGOPERATE_BASE/run/pgoperate-deamon.pid [(issue #16)](https://github.com/Trivadis/pgoperate/issues/16)
-* Enhanced the documentation about [SELinux](https://github.com/Trivadis/pgoperate/tree/dev#selinux) considerations related to pgoperate daemon [(issue #2)](https://github.com/Trivadis/pgoperate/issues/2)
+* Enhanced the documentation about [SELinux](https://github.com/Trivadis/pgoperate/#selinux) considerations related to pgoperate daemon [(issue #2)](https://github.com/Trivadis/pgoperate/issues/2)
 * Bug fixed related to `pgoperate --standbymgr --check` command (consider new parameter names `--local-host` and `--remote-host`) [(issue #13)](https://github.com/Trivadis/pgoperate/issues/13)
 
 ## 4.1
