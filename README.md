@@ -483,6 +483,11 @@ semanage fcontext -a -t bin_t "/var/lib/pgsql/tvdtoolbox/pgbasenv/bin(/.*)?"
 semanage fcontext -a -t bin_t "/var/lib/pgsql/tvdtoolbox/pgoperate/bin(/.*)?"
 
 restorecon -R -v /var/lib/pgsql/tvdtoolbox/pgbasenv/bin
+restorecon -R -v /var/lib/pgsql/tvdtoolbox/pgoperate/bin
+
+# Required for RHES/OEL 8
+semanage fcontext -a -t postgresql_var_run_t "/var/lib/pgsql/tvdtoolbox/pgoperate/run(/.*)?"
+restorecon -R -v /var/lib/pgsql/tvdtoolbox/pgoperate/run
 
 # daemon startup should work now
 systemctl start pgoperated-postgres.service
