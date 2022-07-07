@@ -64,6 +64,9 @@ PG_WAL_SEGSIZE=
 # To enable SSL for this cluster or not.
 ENABLE_SSL=no
 
+# Create a Softlink to $PGSQL_BASE/cert/ instead of copy. Only relevant if ENABLE_SSL=yes
+LINK_CERT=no
+
 # The absolute path and filename of the CA certificate for the SSL connections. Relevant if ENABLE_SSL is "yes".
 #   Example:  CA_CERT="/home/user/root.crt"
 CA_CERT=

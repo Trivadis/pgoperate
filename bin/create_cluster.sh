@@ -226,8 +226,11 @@ initialize_db
 printheader "Moving config files to $PGSQL_BASE/etc"
 move_configs
 
-printheader "Copy certificates"
+printheader "Copy certificates if parameter LINK_CERT set to no"
 copy_certs
+
+printheader "Link certificates if parameter LINK_CERT set to yes"
+link_certs
 
 printheader "Updating pg_hba.conf"
 update_pg_hba

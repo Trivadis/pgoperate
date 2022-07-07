@@ -172,18 +172,27 @@ chmod 700 $PGSQL_BASE/cert
 
 
 copy_certs() {
-if [[ "$ENABLE_SSL" == "yes" ]]; then
- cp $CA_CERT "$PGSQL_BASE/cert/"
- cp $SERVER_CERT "$PGSQL_BASE/cert/"
- cp $SERVER_KEY "$PGSQL_BASE/cert/"
- chown $OS_USER:$OS_GROUP "$PGSQL_BASE/cert/$(basename $SERVER_CERT)"
- chown $OS_USER:$OS_GROUP "$PGSQL_BASE/cert/$(basename $SERVER_KEY)"
- chown $OS_USER:$OS_GROUP "$PGSQL_BASE/cert/$(basename $CA_CERT)"
- chmod og-rwx "$PGSQL_BASE/cert/$(basename $SERVER_CERT)"
- chmod og-rwx "$PGSQL_BASE/cert/$(basename $SERVER_KEY)"
- chmod og-rwx "$PGSQL_BASE/cert/$(basename $CA_CERT)"
+if [[ "$ENABLE_SSL" == "yes" ]] && [[ "$LINK_CERT" == "no" ]]; then
+   cp $CA_CERT "$PGSQL_BASE/cert/"
+   cp $SERVER_CERT "$PGSQL_BASE/cert/"
+   cp $SERVER_KEY "$PGSQL_BASE/cert/"
+   chown $OS_USER:$OS_GROUP "$PGSQL_BASE/cert/$(basename $SERVER_CERT)"
+   chown $OS_USER:$OS_GROUP "$PGSQL_BASE/cert/$(basename $SERVER_KEY)"
+   chown $OS_USER:$OS_GROUP "$PGSQL_BASE/cert/$(basename $CA_CERT)"
+   chmod og-rwx "$PGSQL_BASE/cert/$(basename $SERVER_CERT)"
+   chmod og-rwx "$PGSQL_BASE/cert/$(basename $SERVER_KEY)"
+   chmod og-rwx "$PGSQL_BASE/cert/$(basename $CA_CERT)"
 fi
 }
+
+link_certs() {
+if [[ "$ENABLE_SSL" == "yes" ]] && [[ "$LINK_CERT" == "yes" ]]; then
+   ln -s $CA_CERT "$PGSQL_BASE/cert/"
+   ln -s $SERVER_CERT "$PGSQL_BASE/cert/"
+   ln -s $SERVER_KEY "$PGSQL_BASE/cert/"
+fi
+}
+
 
 
 
