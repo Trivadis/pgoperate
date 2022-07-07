@@ -233,9 +233,9 @@ local arrcnt=${#BACKUP_DATES_ARRAY[@]}
 i=0
 while [ $i -le $arrcnt ]; do
   if [[ $i -eq $(( arrcnt-1 )) ]]; then
-    [[ $untiltime -gt ${BACKUP_DATES_ARRAY[$i]} && $untiltime -lt ${BACKUP_DATES_ARRAY[0]} ]] && untildirtime=${BACKUP_DATES_ARRAY[$i]}
+    [[ $untiltime -gt ${BACKUP_DATES_ARRAY[$i]} && $untiltime -le ${BACKUP_DATES_ARRAY[0]} ]] && untildirtime=${BACKUP_DATES_ARRAY[$i]}
   else
-    [[ $untiltime -gt ${BACKUP_DATES_ARRAY[$i]} && $untiltime -lt ${BACKUP_DATES_ARRAY[$(( i+1 ))]} ]] && untildirtime=${BACKUP_DATES_ARRAY[$i]}
+    [[ $untiltime -gt ${BACKUP_DATES_ARRAY[$i]} && $untiltime -le ${BACKUP_DATES_ARRAY[$(( i+1 ))]} ]] && untildirtime=${BACKUP_DATES_ARRAY[$i]}
   fi
   (( i++ ))
 done
@@ -270,7 +270,7 @@ if [[ ! -z $backups ]]; then
    [[ $d -lt $mid ]] && mid=$d && midir=$bdir
  done
 
- local max_dir_num=$(ls -1 $BACKUP_LOCATION | sort -n | tail -1 | cut -d"-" -f1)
+ local max_dir_num=$(ls -1 $BACKUP_LOCATION | cut -d"-" -f1 | sort -n | tail -1 )
  [[ -z $max_dir_num ]] && max_dir_num=0
 
  if [[ ! -z $BACKUP_RETENTION_DAYS ]]; then
@@ -292,7 +292,7 @@ if [[ ! -z $backups ]]; then
     local arrcnt=${#BACKUP_DATES_ARRAY[@]}
     local i=0
     while [ $i -le $arrcnt ]; do
-      [[ $UNTIL_DIR_TIME -gt ${BACKUP_DATES_ARRAY[$i]} ]] && dirs_obsoleted="$dirs_obsoleted ${BACKUP_DIRS_ARRAY[$i]}"
+      [[ $UNTIL_DIR_TIME -ge ${BACKUP_DATES_ARRAY[$i]} ]] && dirs_obsoleted="$dirs_obsoleted ${BACKUP_DIRS_ARRAY[$i]}"
       (( i++ ))
     done
 
