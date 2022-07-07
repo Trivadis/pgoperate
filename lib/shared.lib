@@ -172,6 +172,13 @@ chmod 700 $PGSQL_BASE/cert
 
 
 copy_certs() {
+# For backward compatibility - if LINK_CERT is not set in parameter file the default is "no".
+# Without this default recreating existing instances without LINK_CERT in parameter file will fail resp.
+# neither copy_certs nor link_certs will be executed because of an undefined variable!
+if [[ -z ${LINK_CERT+x}  ]]; then
+  LINK_CERT=no
+fi
+
 if [[ "$ENABLE_SSL" == "yes" ]] && [[ "$LINK_CERT" == "no" ]]; then
    cp $CA_CERT "$PGSQL_BASE/cert/"
    cp $SERVER_CERT "$PGSQL_BASE/cert/"
@@ -186,13 +193,19 @@ fi
 }
 
 link_certs() {
+  # For backward compatibility - if LINK_CERT is not set in parameter file the default is "no".
+# Without this default recreating existing instances without LINK_CERT in parameter file will fail resp.
+# neither copy_certs nor link_certs will be executed because of an undefined variable!
+if [[ -z ${LINK_CERT+x}  ]]; then
+  LINK_CERT=no
+fi
+
 if [[ "$ENABLE_SSL" == "yes" ]] && [[ "$LINK_CERT" == "yes" ]]; then
    ln -s $CA_CERT "$PGSQL_BASE/cert/"
    ln -s $SERVER_CERT "$PGSQL_BASE/cert/"
    ln -s $SERVER_KEY "$PGSQL_BASE/cert/"
 fi
 }
-
 
 
 
