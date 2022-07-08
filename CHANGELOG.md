@@ -1,3 +1,7 @@
+## 4.3
+* New parameter `LINK_CERT` added to control if SSL certificates must be copied or linked
+* Bug fixed related to deletion of obsolete backups in `pgoperate --backup` command
+
 ## 4.2 
 * New parameter `PG_WAL_SEGSIZE` to define a custom WAL segment size [(issue #20)](https://github.com/Trivadis/pgoperate/issues/20)
 * Changed the path for the pgoperate daemon PID file from $PGOPERATE_BASE/bin to $PGOPERATE_BASE/run/pgoperate-deamon.pid [(issue #16)](https://github.com/Trivadis/pgoperate/issues/16)

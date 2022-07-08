@@ -349,7 +349,7 @@ Sub-folder `tools` will include output logs from all the pgOperate scripts. Any 
 
 Is the folder to store all server side certificate files for ssl connections.
 
-If `ENABLE_SSL` parameter was set to "on" in `parameters_<alias>.conf` file then during cluster creation, cert files will be copied to this folder.
+If `ENABLE_SSL` parameter was set to "on" in `parameters_<alias>.conf` file then during cluster creation, cert files will be copied or linked (`LINK_CERT`) to this folder.
 
 #### backup
 
@@ -527,7 +527,8 @@ Parameters:
 | **PG_SUPERUSER_PWD**  |                                          | The password for the superuser account.                             | 
 | **PCTMEM**                | `30`                                     | The percent of the host memory to use for PostgreSQL shared buffers.         |
 | **PG_WAL_SEGSIZE**        | `16`                                     | Set a custom WAL segment size in MB which is used as parameter --wal-segsize for initdb, defaults to 16MB      |
-| **ENABLE_SSL**            | `no`                                    | Will try to copy `CA_CERT`, `SERVER_CERT` and `SERVER_KEY` to the `$PGSQL_BASE/cert` directory and then enable SSL connections to cluster. If some of these certificates will not be found then `ENABLE_SSL` will be forced to "no".                                                                 |
+| **ENABLE_SSL**            | `no`                                    | Will try to copy/link `CA_CERT`, `SERVER_CERT` and `SERVER_KEY` to the `$PGSQL_BASE/cert` directory and then enable SSL connections to cluster. If some of these certificates will not be found then `ENABLE_SSL` will be forced to "no".                                                                 |
+| **LINK_CERT**            | `no`                                     | If set to "no" (default) the certificates will be copied to `$PGSQL_BASE/cert` if set to "yes" the certificates will be linked to `$PGSQL_BASE/cert`. For backward compatibility this parameter is not mandatory in the cluster parameter file and is set internally to "no" if not present. This parameter takes effect only if `ENABLE_SSL` is set to "yes".            |
 | **CA_CERT**               |                                          | File with CA certificate. Usually called root.crt.                           |
 | **SERVER_CERT**           |                                          | File with SSL server certificate. Usually called server.crt.                 |
 | **SERVER_KEY**            |                                          | File with SSL server private key. Usually called server.key.                 |
