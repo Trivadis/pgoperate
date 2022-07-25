@@ -7,7 +7,7 @@ Check the [Change Log](CHANGELOG.md) for new features and changes introduced in 
 
 ## Prerequisites
 
-pgOperate requires pgBaseEnv.
+pgOperate requires pgBasEnv.
 
 First pgBasEnv must be installed. Minimum required version is 1.9.
 
@@ -463,14 +463,14 @@ Daemon process `pgoperated` will monitor the configuration parameters of the reg
 Intended state can be defined by parameter `INTENDED_STATE` in `parameters_<alias>.conf` file. It can be set to `UP` or `DOWN`.
 If it is set to `UP`, then daemon will try to keep the cluster up and running, it will be also started after host restart.
 
-The commands `pgoperate --start` and `pgoperate --stop` can be used to start or stop the cluster manually. If `AUTOSTART` for the current cluster set to `YES`, then these commands will signal daemon to start or stop the claster. If `AUTOSTART` is set to any other values, then local commands will be used to start or stop the cluster.
+The commands `pgoperate --start` and `pgoperate --stop` can be used to start or stop the cluster manually. If `AUTOSTART` for the current cluster set to `YES`, then these commands will signal daemon to start or stop the cluster. If `AUTOSTART` is set to any other values, then local commands will be used to start or stop the cluster.
 
 pgoperated can automatically failover the monitored instance after `FAILCOUNT` failed attempts to restart it. The target for the failover will be next available and healthy standby with lowest node number. To see node numbers use `pgoperate --standbymgr --status`. To enable this behaviour `AUTOFAILOVER` parameter must be set to `yes`, which is default value.
 
 After failover will be initiated, old master will be left in `REINSTATE` state. If there will be attempt to start it using `pgoperate --start` or automatically by pgoperated, then reintate will be tried.
 
 ### SELinux
-If SELinux is enabled on your system you might face some issues starting the pgoperated-postgres daemon. 
+If SELinux is enabled on your system you might face some issues starting the pgoperated-postgres daemon as well as with ssh key authentication. 
 
 The following steps shoud fix the issue.
 
@@ -488,6 +488,9 @@ restorecon -R -v /var/lib/pgsql/tvdtoolbox/pgoperate/bin
 # Required for RHES/OEL 8
 semanage fcontext -a -t postgresql_var_run_t "/var/lib/pgsql/tvdtoolbox/pgoperate/run(/.*)?"
 restorecon -R -v /var/lib/pgsql/tvdtoolbox/pgoperate/run
+
+sudo semanage fcontext --add -t ssh_home_t "/var/lib/pgsql/.ssh(/.*)?";
+sudo restorecon -FRv /var/lib/pgsql/.ssh
 
 # daemon startup should work now
 systemctl start pgoperated-postgres.service
@@ -795,7 +798,7 @@ Available options:
 ```
 
 Prerequisites for `standbymgr` are:
-* pgBaseEnv (minimum 1.9) and pgOperate must be installed on remote host
+* pgBasEnv (minimum 1.9) and pgOperate must be installed on remote host
 * Passwordless ssh connection must be configured between all members of the configuration over the interface used in the `--host` or `--master-host` parameters.
 
 All commands except `--add-standby` can be executed on any host of the configuration.

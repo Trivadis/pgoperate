@@ -676,7 +676,7 @@ check_remote_dir() {
 
 
 check_local_dir() {
-    local dir=$2
+    local dir=$1
     local output=$([[ "$(ls -A $dir 2>&1)" ]] && echo NOT_EMPTY)
     echo $output | grep -q NOT_EMPTY
     if [[ $? -eq 0 ]]; then
@@ -713,16 +713,23 @@ create_slave() {
    check_replication_parameters
 
    $PGOPERATE_BASE/bin/control.sh stop >/dev/null
-   #$PG_BIN_HOME/pg_ctl stop -D ${PGDATA} -s -m fast >/dev/null
+   
+   # Lock the pgclustertab because $PGDATA might be cleared.
+   # If $PGDATA is empty and another user logs in the pgclustertab might be corrupted
+   # < means that the file must already exist
+   exec 7<>$PGBASENV_BASE/etc/pgclustertab
+   flock -x -w 15 7
+
    check_local_dir $PGDATA
    RC=$?
    if [[ $RC -gt 0 ]]; then
+      # pg_basebackup requires an empty PGDATA otherwise the following message is shown:
+      # pg_basebackup: error: directory "xxx" exists but is not empty
       rm -rf $PGDATA/*
    fi
 
-
-
    #echo "Copying data directory from $MASTER_HOST to the $PGSQL_BASE/data"
+   # pg_basebackup creates automatically the primary_conninfo parameter in postgresql.auto.conf!
    export PGPASSWORD="$REPLICA_USER_PASSWORD"
    $PG_BIN_HOME/pg_basebackup --wal-method=stream -D $PGSQL_BASE/data -U replica -h $MASTER_HOST -p $MASTER_PORT -R
    if [[ ! $? -eq 0 ]]; then
@@ -730,6 +737,8 @@ create_slave() {
       return 1
    fi
 
+   # Release the lock on pgclustertab
+   exec 7>&-
 
    #echo "Updating pg_hba.conf file"
    update_pg_hba
@@ -742,6 +751,8 @@ create_slave() {
    local conninfo
    if [[ $TVD_PGVERSION -ge 12 ]]; then
      [[ ! -z $BACKUP_LOCATION && $DISABLE_BACKUP_SCRIPTS == "no" ]] && set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'"
+     # tail -1 is important to get only the last line which was added by pg_basebackup.
+     # Normally there are two lines with primary_conninfo, because one was already there and pg_basebackup adds it just to the end of the file.
      conninfo=$(grep primary_conninfo $PGSQL_BASE/data/postgresql.auto.conf | grep -oE "'.+'" | tail -1)
      conninfo="$(eval "echo $conninfo") application_name=${INPUT_SLAVE_UNIQNAME}"
      #SET_CONF_PARAM_IN_CLUSTER="NO"
@@ -753,6 +764,8 @@ create_slave() {
      touch $PGSQL_BASE/data/standby.signal
    else
      [[ ! -z $BACKUP_LOCATION && $DISABLE_BACKUP_SCRIPTS == "no" ]] && echo "restore_command = 'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'" >> $PGSQL_BASE/data/recovery.conf
+     # tail -1 is important to get only the last line which was added by pg_basebackup.
+     # Normally there are two lines with primary_conninfo, because one was already there and pg_basebackup adds it just to the end of the file.
      conninfo=$(grep primary_conninfo $PGSQL_BASE/data/recovery.conf | grep -oE "'.+'" | tail -1)
      conninfo="$(eval "echo $conninfo") application_name=${INPUT_SLAVE_UNIQNAME}"
      set_conf_param "$PGSQL_BASE/data/recovery.conf" primary_conninfo "'$conninfo'"
@@ -782,8 +795,9 @@ create_slave() {
 
 
 prepare_master() {
-  #local standby=$1
-  local uniqname=$1
+  # Optional parameter: it tells the function that a new standby has been added.
+  # If the parameter $1 is not defined, the function will add missing slots of existing standby databases.
+  local new_standby_uniqname=$1
 
   if [[ -z $REPLICA_USER_PASSWORD ]]; then
     echo "ERROR: Set REPLICA_USER_PASSWORD in $PARAMETERS_FILE."
@@ -796,11 +810,14 @@ prepare_master() {
     return 1
   fi
 
-  create_replication_slot $uniqname
-  RC=$?
-  if [[ $RC -gt 0 ]]; then
-    echo "ERROR: Failed to create replication slot. Check the error message from psql. Fix the issue and try again."
-    return 1
+  # Execute only if a new standby (--add-standby) is added since this slot does not yet exist on the current master
+  if [[ ! -z $new_standby_uniqname ]]; then
+    create_replication_slot $new_standby_uniqname
+    RC=$?
+    if [[ $RC -gt 0 ]]; then
+      echo "ERROR: Failed to create replication slot. Check the error message from psql. Fix the issue and try again."
+      return 1
+    fi
   fi
 
   # Create replication slots for standbys
@@ -969,16 +986,13 @@ add_slave() {
 # Values for REWIND and DUPLICATE can be 0 or 1
 reinstate() {
   local NEW_MASTER_UNIQNAME=$1
-  local REWIND=$2
-  local DUPLICATE=$3
-
-  local db_master=$(db_get_master)
-  local db_master_uniqname=$(echo $db_master | cut -d"|" -f4)
+  local NEW_STANDBY_UNIQNAME=$2
   
+  # Master where the reinstated Standby must point to
   local db_new_master=$(db_get_by_uniqname $NEW_MASTER_UNIQNAME)
   local NEW_MASTER_HOST=$(echo $db_new_master | cut -d"|" -f2)
 
-  local REPLICATION_SLOT_NAME="slot_${db_master_uniqname}"
+  local REPLICATION_SLOT_NAME="slot_${NEW_STANDBY_UNIQNAME}"
 
   on_exit() {
      local SET_AUTOSTART_TO=$1
@@ -1008,10 +1022,11 @@ reinstate() {
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" hot_standby "on"
      grep -q "#replication#" $PGSQL_BASE/etc/pg_hba.conf
      [[ $? -gt 0 ]] && echo -e "# For replication. Connect from remote hosts. #replication#\nhost    replication     replica      0.0.0.0/0      scram-sha-256" >> $PGSQL_BASE/etc/pg_hba.conf
-     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_conninfo "'user=replica password=$REPLICA_USER_PASSWORD host=$NEW_MASTER_HOST port=$PGPORT application_name=${db_master_uniqname}'"
-     set_conf_param "$PGSQL_BASE/data/postgresql.auto.conf" primary_conninfo "'user=replica password=$REPLICA_USER_PASSWORD host=$NEW_MASTER_HOST port=$PGPORT application_name=${db_master_uniqname}'"
+     set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_conninfo "'user=replica password=$REPLICA_USER_PASSWORD host=$NEW_MASTER_HOST port=$PGPORT application_name=${NEW_STANDBY_UNIQNAME}'"
+     set_conf_param "$PGSQL_BASE/data/postgresql.auto.conf" primary_conninfo "'user=replica password=$REPLICA_USER_PASSWORD host=$NEW_MASTER_HOST port=$PGPORT application_name=${NEW_STANDBY_UNIQNAME}'"
      [[ ! -z $BACKUP_LOCATION && $DISABLE_BACKUP_SCRIPTS == "no" ]] && set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'cp $BACKUP_LOCATION/*/wal/%f "%p" || cp $PGSQL_BASE/arch/%f "%p"'"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" primary_slot_name "'${REPLICATION_SLOT_NAME}'"
+     set_conf_param "$PGSQL_BASE/data/postgresql.auto.conf" primary_slot_name "'${REPLICATION_SLOT_NAME}'"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" recovery_target_timeline "'latest'"
      set_conf_param "$PGSQL_BASE/etc/postgresql.conf" restore_command "'$RESTORE_COMMAND'"
      touch $PGSQL_BASE/data/standby.signal 
@@ -1020,7 +1035,7 @@ reinstate() {
   create_recovery_file(){
     echo "
 standby_mode = 'on'
-primary_conninfo = 'user=replica password=''$REPLICA_USER_PASSWORD'' host=$NEW_MASTER_HOST port=$PGPORT application_name=${db_master_uniqname}'
+primary_conninfo = 'user=replica password=''$REPLICA_USER_PASSWORD'' host=$NEW_MASTER_HOST port=$PGPORT application_name=${NEW_STANDBY_UNIQNAME}'
 primary_slot_name = '${REPLICATION_SLOT_NAME}'
 recovery_target_timeline = 'latest'
 " > $PGSQL_BASE/data/recovery.conf
@@ -1028,6 +1043,7 @@ recovery_target_timeline = 'latest'
 chown $OS_USER:$OS_GROUP $PGSQL_BASE/data/recovery.conf
 }
 
+# Requires .pgpass configured for the superuser. Otherwise the fallback to the full duplicate is made.
 do_rewind(){
 
   # if [[ ! -z "$PG_SUPERUSER_PWDFILE" && -f "$SCRIPTDIR/$PG_SUPERUSER_PWDFILE" ]]; then
@@ -1062,36 +1078,6 @@ do_duplicate(){
 
 check_master
 
-
-if [[ $REWIND -eq 1 ]]; then
-  do_rewind
-  sleep 5
-  repstatus=$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PGPORT -d postgres -At -c "select status from pg_stat_wal_receiver where conninfo like '%host=$NEW_MASTER_HOST%'")
-  if [[ $repstatus == "streaming" ]]; then
-        echo "WAL receiver in streaming mode."
-        return 0
-  else
-        echo "CRITICAL: WAL receiver in not streaming."
-        return 1
-  fi
-
-fi	
-
-
-if [[ $DUPLICATE -eq 1 ]]; then
-  do_duplicate
-  sleep 5
-  repstatus=$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PGPORT -d postgres -At -c "select status from pg_stat_wal_receiver where conninfo like '%host=$NEW_MASTER_HOST%'")
-  if [[ $repstatus == "streaming" ]]; then
-        echo "WAL receiver in streaming mode."
-        return 0
-  else
-        echo "CRITICAL: WAL receiver in not streaming. Manual intervention required"
-        return 1
-  fi
-
-fi
-
 pgsetenv $PGBASENV_ALIAS
 
 
@@ -1114,7 +1100,7 @@ pgsetenv $PGBASENV_ALIAS
   sleep 5
   repstatus=$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PGPORT -d postgres -At -c "select status from pg_stat_wal_receiver where conninfo like '%host=$NEW_MASTER_HOST%'")
   if [[ $repstatus == "streaming" ]]; then
-     echo "WAL receiver in streaming mode."
+     echo "WAL receiver in streaming mode after cluster restart."
 	   echo "Reinstation complete."
      return 0
   else
@@ -1123,26 +1109,26 @@ pgsetenv $PGBASENV_ALIAS
      sleep 5
      repstatus=$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PGPORT -d postgres -At -c "select status from pg_stat_wal_receiver where conninfo like '%host=$NEW_MASTER_HOST%'")
      if [[ $repstatus == "streaming" ]]; then
-        echo "WAL receiver in streaming mode."
+        echo "WAL receiver in streaming mode after pg_rewind."
 		    echo "Reinstation complete."
         return 0
      elif [[ $FORCE -eq 1 ]]; then
         echo "WARNING: Force option -f specified!"
-        echo "WARNING: WAL receiver is steel not streaming. Will try to recreate Standby from active Master."
+        echo "WARNING: WAL receiver is still not streaming. Will try to recreate Standby from active Master."
         do_duplicate
 	      sleep 5
         repstatus=$($PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PGPORT -d postgres -At -c "select status from pg_stat_wal_receiver where conninfo like '%host=$NEW_MASTER_HOST%'")
         if [[ $repstatus == "streaming" ]]; then
-           echo "WAL receiver in streaming mode."
+           echo "WAL receiver in streaming mode after full duplicate."
 		       echo "Reinstation complete."
            return 0
         else
-           echo "WARNING: WAL receiver is steel not streaming. Manual action required."
+           echo "WARNING: WAL receiver is still not streaming. Manual action required."
            return 1
         fi
 
      else
-         echo "WARNING: WAL receiver is steel not streaming. Manual action required."
+         echo "WARNING: WAL receiver is still not streaming. Manual action required."
          return 1
      fi
 
@@ -1319,6 +1305,13 @@ switchover_to() {
 
   local db_master=$(db_get_master)
   local MASTER_HOST=$(echo $db_master | cut -d"|" -f2)
+  local MASTER_UNIQUE_NAME=$(echo $db_master | cut -d"|" -f4)
+
+  if [[ $UNIQNAME == $MASTER_UNIQUE_NAME ]]; then
+    echo "ERROR: The current master ($UNIQNAME) can not be used as Switchover target!"
+    echo "ERROR: Execute the command on a standby host or use --target parameter."
+    return 1
+  fi
 
   # If current host is not master host, then command will be executed on the master
   if [[ $(is_local_host $MASTER_HOST) == "NO" ]]; then
@@ -1326,7 +1319,7 @@ switchover_to() {
      [[ $FORCE -eq 1 ]] && force_mode="--force" || force_mode=""
      execute_remote $MASTER_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --switchover --target $UNIQNAME $force_mode"
      RC=$?
-     return $RC   
+     return $RC
   fi
 
   local db_standby=$(db_get_standby $UNIQNAME)
@@ -1386,7 +1379,6 @@ switchover_to() {
     execute_remote $STANDBY_HOST $PGBASENV_ALIAS "\$TVD_PGHOME/bin/pg_ctl promote"
     [[ $? -gt 0 ]] && error "Failed to promote slave cluster on host $STANDBY_HOST." && return 1
     execute_remote $STANDBY_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --set-master --target $UNIQNAME"
-    #execute_remote $STANDBY_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --sync-config"
   else
     echo "Remote is already promoted."
   fi
@@ -1401,19 +1393,18 @@ switchover_to() {
   point_standbys_to_new_master $UNIQNAME 
 
   FORCE=1
-  reinstate $UNIQNAME
+  # UNIQNAME is the name of the new master / MASTER_UNIQUE_NAME is the name of the new standby
+  reinstate $UNIQNAME $MASTER_UNIQUE_NAME
   RC=$?
   
 
   $0 --sync-config
 
-  
-  #"cleanup orphan rep slots"
-
-  rep_slot=$(exec_pg "select slot_name from pg_replication_slots where slot_name like('%$UNIQNAME%')" | xargs)
-  res=$(exec_pg "select pg_drop_replication_slot('$rep_slot')")
-  res2=$(execute_remote $STANDBY_HOST $PGBASENV_ALIAS "$PG_BIN_HOME/psql -U $PG_SUPERUSER -p $PGPORT -d postgres -c \"select pg_drop_replication_slot('slot_$UNIQNAME')\" ")
-
+  # cleanup all replication slots in the new standby since those are not needed anymore
+  rep_slot=$(exec_pg "select slot_name from pg_replication_slots" | xargs)
+  for s in $rep_slot; do
+    res=$(exec_pg "select pg_drop_replication_slot('$s')")
+  done
 
   return $RC
 
@@ -1438,21 +1429,37 @@ reinstate_cluster() {
   local db_master_host=$(echo $db_master | cut -d"|" -f2)
   local db_master_uniqname=$(echo $db_master | cut -d"|" -f4)
 
+  # Abort in case someone wants to reinstate the master itself
+  if [[ $UNIQNAME == $db_master_uniqname ]]; then
+     echo "ERROR: Provided target ($UNIQNAME) is the current master based on the local repository metadata!"
+     return 1
+  fi
+
   if [[ $(is_local_host $TARGET_HOST) == "NO" ]]; then
      execute_remote $TARGET_HOST $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --reinstate --target $UNIQNAME --force"
      RC=$?
      return $RC
   fi
 
+  # The replication slot for the new reinstated standby must be created on the master
   if [[ $(is_local_host $db_master_host) == "YES" ]]; then
-       prepare_master $UNIQNAME
+       create_replication_slot "$UNIQNAME"
   else
-       execute_remote $db_master_host $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --prepare-master --target $UNIQNAME"
+       execute_remote $db_master_host $PGBASENV_ALIAS "\$PGOPERATE_BASE/bin/standbymgr.sh --exec --payload \"create_replication_slot $UNIQNAME\""
   fi
 
   FORCE=1
-  reinstate $db_master_uniqname
+  # db_master_uniqname is the name of the master / UNIQNAME is the name of the standby
+  reinstate $db_master_uniqname $UNIQNAME
   RC=$?
+
+  # cleanup all replication slots in the new standby since those are not needed anymore
+  rep_slot=$(exec_pg "select slot_name from pg_replication_slots" | xargs)
+  for s in $rep_slot; do
+    res=$(exec_pg "select pg_drop_replication_slot('$s')")
+  done
+
+  rm_host_from_sync_list $UNIQNAME
 
   if [[ $RC -eq 0 ]]; then
     if [[ $(is_local_host $db_master_host) == "YES" ]]; then
@@ -1547,7 +1554,8 @@ failover_to() {
     RC=$?
   else
     FORCE=1
-    prepare_master $UNIQNAME
+    # Do not provide a parameter for this function call!
+    prepare_master
     RC=$?
   fi
 
@@ -1559,6 +1567,10 @@ failover_to() {
   point_standbys_to_new_master $UNIQNAME 
   
   $0 --sync-config
+
+  # cleanup orphan rep slot on the primary of the new master itself
+  rep_slot=$(exec_pg "select slot_name from pg_replication_slots where slot_name like('%$UNIQNAME%')" | xargs)
+  res=$(exec_pg "select pg_drop_replication_slot('$rep_slot')")
 
   return $RC
 
@@ -1741,7 +1753,8 @@ elif [[ $MODE == "PREPARE_MASTER" ]]; then
         INPUT_SLAVE_UNIQNAME=$LOCAL_SITE_UNIQNAME
      fi
   fi
-  prepare_master $INPUT_SLAVE_UNIQNAME
+  # Do not provide a parameter for this function call!
+  prepare_master
   RC=$?
 
 
