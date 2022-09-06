@@ -1,3 +1,6 @@
+## 4.4
+* Improved replication slot and primary connect info handling during switchover/failover/reinstate operation
+
 ## 4.3
 * New parameter `LINK_CERT` added to control if SSL certificates must be copied or linked
 * Bug fixed related to deletion of obsolete backups in `pgoperate --backup` command
