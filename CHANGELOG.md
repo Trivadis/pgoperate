@@ -11,6 +11,10 @@
 * Enhanced the documentation about [SELinux](https://github.com/Trivadis/pgoperate/#selinux) considerations related to pgoperate daemon [(issue #2)](https://github.com/Trivadis/pgoperate/issues/2)
 * Bug fixed related to `pgoperate --standbymgr --check` command (consider new parameter names `--local-host` and `--remote-host`) [(issue #13)](https://github.com/Trivadis/pgoperate/issues/13)
 
+_Special installation instructions for 4.2:_
+* Change the path of the parameter `PIDFile` in /etc/systemd/system/pgoperated-<user>.service from `../bin/..` to `../run/..`
+* Example: `/home/postgres/tvdtoolbox/pgoperate/bin/pgoperate-deamon.pid` to `/home/postgres/tvdtoolbox/pgoperate/run/pgoperate-deamon.pid`
+
 ## 4.1
 * New parameter `RESTORE_COMMAND` added to conf file. If `DISABLE_BACKUP_SCRIPTS` is activated, `restore_command` will be set to `RESTORE_COMMAND` in postgresql.conf on standby sites [(issue #14)](https://github.com/Trivadis/pgoperate/issues/14)
 * Added two new aliases for pgOperate to pgBasEnv configuration:
