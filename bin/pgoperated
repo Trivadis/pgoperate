@@ -116,7 +116,7 @@ fi
         [[ -z $PGPORT ]] && PGPORT=$PG_PORT
         if [[ $AUTOSTART == "YES" ]]; then
           if [[ $INTENDED_STATE == "UP" && $STATUS == "DOWN" ]]; then
-            $PGOPERATE_BASE/bin/standbymgr.sh --sync_config
+            $PGOPERATE_BASE/bin/standbymgr.sh --sync-config
             D_V1="$($PGOPERATE_BASE/bin/standbymgr.sh --status --list)"
             echo "$D_V1" >> $LOG_FILE
             #local_status=$(echo "$D_V1" | grep "|$(hostname -s)|" | cut -d"|" -f3)
