@@ -85,8 +85,12 @@ modifyFile() {
   replace="${replace//\"/\\x22}"
   replace="${replace//$'\t'/\\t}"
   replace="${replace//\*/\\*}"
+  replace="${replace//[/\\[}"
+  replace="${replace//]/\\]}"
   value="${value//\"/\\x22}"
   value="${value//$'\t'/\\t}"
+  value="${value//[/\\[}"
+  value="${value//]/\\]}"
   local v_bkp_file=$v_file"."$(date +"%y%m%d%H%M%S")
   if [[ -z $v_file || -z $v_op ]]; then
     error "First two arguments are mandatory!"
