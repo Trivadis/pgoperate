@@ -1,3 +1,9 @@
+## 4.5
+* Bug fixes related to PG_DEF_PARAMS parameter in cluster parameter file
+  * [(issue #21)](https://github.com/Trivadis/pgoperate/issues/21)
+  * [(issue #27)](https://github.com/Trivadis/pgoperate/issues/27)
+  * [(issue #28)](https://github.com/Trivadis/pgoperate/issues/28)
+
 ## 4.4
 * Improved replication slot and primary connect info handling during switchover/failover/reinstate operation
 
