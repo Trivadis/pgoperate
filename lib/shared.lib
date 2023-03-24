@@ -263,9 +263,11 @@ set_conf_param "$PGSQL_BASE/etc/postgresql.conf" max_wal_senders "10"
 set_conf_param "$PGSQL_BASE/etc/postgresql.conf" max_replication_slots "10"
 set_conf_param "$PGSQL_BASE/etc/postgresql.conf" track_commit_timestamp "on"
 
+# Do not remove the double quotes from the while loop input around the "$(echo...)"!
+# Those are curcial that newlines within the variable PG_DEF_PARAMS are kept!
 while read -r param; do
   [[ ${#param} -gt 0 ]] && set_conf_param "$PGSQL_BASE/etc/postgresql.conf" $(echo $param | cut -s -d"=" -f1) "$(echo $param | cut -s -d"=" -f2-)"
-done <<< $(echo "$PG_DEF_PARAMS" | grep -E -v "^[ ]*#")
+done <<< "$(echo "$PG_DEF_PARAMS" | grep -E -v "^[ ]*#")"
 
 if [[ $PCTMEM -gt 0 ]]; then
   local membytes=$(free -m | grep Mem | awk '{print $2}')
