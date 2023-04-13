@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 # Author:  Aychin Gasimov (AYG)
-# Desc: Script to install pgBasEnv from scratch or upgrade existing version.
+# Desc: Script to install pgOperate from scratch or upgrade existing version.
 #       Check README.md for details.
 #
 # Change log:
@@ -72,7 +72,9 @@ mkdir -p $TVDBASE/pgoperate
 [[ $? -gt 0 ]] && echo "ERROR: Cannot continue! Check the path specified." && exit 1 || echo "SUCCESS"
 
 echo -e "\n>>> INSTALLATION STEP: Extracting files into $TVDBASE/pgoperate.\n"
-tar -xvf $TARFILE -C $TVDBASE
+# Do not overwrite the custom_check.lib in case of an existing installation (upgrade case)
+test -f $PGOPERATE_BASE/lib/custom_check.lib && export EXCLUDELIB="--exclude=pgoperate/lib/custom_check.lib"
+tar -xvf $TARFILE -C $TVDBASE $EXCLUDELIB
 [[ $? -gt 0 ]] && echo "ERROR: Cannot continue! Check the output and fix issue." && exit 1 || echo "SUCCESS"
 
 echo -e "\n>>> INSTALLATION STEP: Add aliases to \$PGBASENV_BASE/etc/pgbasenv_standard.conf.\n"
