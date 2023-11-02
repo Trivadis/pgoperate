@@ -9,6 +9,7 @@
 #    <function_name>_THRESHOLD   - Input variable, if there was threshold defined, it will be assigned to this variable.
 #    <function_name>_OCCURRENCE  - Input variable, if there was occurrence defined, it will be assigned to this variables.
 #    <function_name>_FAILCOUNT   - Output variable, this variable will be set by get_fail_count function.
+#    <function_name>_SEVERITY    - Input variable,  if there was severity defined, it will be assigned to this variables.
 #
 # Special functions that can be used inside the function:
 #    exec_pg <cmd>   - Will execute cmd in postgres and return psql return code, output will go to stdout.

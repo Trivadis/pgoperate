@@ -918,7 +918,6 @@ pgoperate --restore backup_dir=/tmp/pgbackup from_subdir=4
 ## check.sh
 ---
 
-
 Check script for PostgreSQL.
 
 It is small framework to create custom checks.
@@ -928,6 +927,7 @@ As fist step check must be defined in `parameters_<alias>.conf` file with next p
 PG_CHECK_<CHECK NAME>=<check function name>
 PG_CHECK_<CHECK NAME>_THRESHOLD=
 PG_CHECK_<CHECK NAME>_OCCURRENCE=
+PG_CHECK_<CHECK NAME>_SEVERITY=
 ```
 
 Then custom check function must be defined in `custom_check.lib` file.
@@ -944,7 +944,8 @@ There are special input and output variables that can be used in check functions
 
 Input variables:
 * `<function_name>_THRESHOLD`   - Input variable, if there was threshold defined, it will be assigned to this variable.
-* `<function_name>_OCCURRENCE`  - Input variable, if there was occurrence defined, it will be assigned to this variables.
+* `<function_name>_OCCURRENCE`  - Input variable, if there was occurrence defined, it will be assigned to this variable.
+* `<function_name>_SEVERITY`    - Input variable, if there was severity defined, it will be used if `<function_name>_CURVAL` is above the `<function_name>_THRESHOLD`. Valid severity values: _critical_ or _warning_. Default severity is _critical_ if the variable is not defined for a specific check.
 * `$PG_BIN_HOME`  - Points to the bin directory of the postgresql.
 * `$SCRIPTDIR`    - The directory of the check script location. Can be used to create temporary invisible files for example. 
 * `$PG_AVAILABLE` - Will be true if database cluster available and false if not available.
@@ -964,7 +965,6 @@ If some big amount of data, extra information must be displayed, then pass it ov
 Check `custom_check.lib` file for check function examples.
 
 There are already few predefined checks.
-
 
 There is also the possibility to generate a text or json based output.
 

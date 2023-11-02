@@ -1,3 +1,7 @@
+## 4.x
+* New input variable `<function_name>_SEVERITY` for the `check.sh` script [(issue #30)](https://github.com/Trivadis/pgoperate/issues/30)
+* Bug fix related to the installer that custom_check.lib is not overwritten anymore [(issue #29)](https://github.com/Trivadis/pgoperate/issues/29)
+
 ## 4.5
 * Bug fixes related to PG_DEF_PARAMS parameter in cluster parameter file
   * [(issue #21)](https://github.com/Trivadis/pgoperate/issues/21)
