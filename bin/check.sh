@@ -16,11 +16,6 @@
 #
 #  Created on 07.2019 by Aychin Gasimov
 #
-# Change log:
-#   06.07.2020: Aychin: Initial version created
-#   17.08.2021: Michael: adapted to json and text output
-#   14.09.2021: Michael: added possbility to run specific check only
-#
 # Script to monitor and check PostgreSQL database cluster.
 #
 # Script uses PGSQL_BASE and other variables from parameters.conf file, which is in the script directory.
@@ -33,7 +28,7 @@ echo "
   Arguments:
                 -t|--text output result to text format only
                 -j|--json output result to json format only
-                -c==<check_defined_in_paramter_file>|--check=<check_defined_in_paramter_file> 
+                -c=<check_defined_in_paramter_file>|--check=<check_defined_in_paramter_file> 
 "
 }
 
@@ -286,17 +281,15 @@ done
 
 check_connectivity
 if [[ $? -gt 0 ]]; then 
-   alarm_critical PG_AVAILABILITY "PostgreSQL database cluster is not available!"
+  alarm_critical PG_AVAILABILITY "PostgreSQL database cluster is not available!"
 fi
 
 
-
-
-
+# Check only one metric provided by CLI parameter -c|--check
 if [[ $ctype == "single" ]]; then
 
-check_function=$(eval "echo \$$check")
-check_variable=$check
+  check_function=$(eval "echo \$$check")
+  check_variable=$check
 
   OCCURRENCE=0
   FAILCOUNT=0
@@ -306,95 +299,65 @@ check_variable=$check
 
   if [[ $exptype == "json" ]]; then
 
-       eval "$check_function"
-  if [[ $? -eq 0 ]]; then
-     printf '{"check":"%s","status":"%s","curval":"%s","threshold":"%s"}\n' "$check_variable" "ok" "$(eval "echo \"\$${check_function}_CURVAL\"")" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
-     reset_fail_count $check_function
-  else
-     add_fail_count $check_function
+    eval "$check_function"
+    if [[ $? -eq 0 ]]; then
+      printf '{"check":"%s","status":"%s","curval":"%s","threshold":"%s"}\n' "$check_variable" "ok" "$(eval "echo \"\$${check_function}_CURVAL\"")" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+      reset_fail_count $check_function
+    else
+      add_fail_count $check_function
 
-     if [[ $FAILCOUNT -ge $OCCURRENCE ]]; then
-                 
-          printf '{"check":"%s","status":"%s","curval":"%s","threshold":"%s"}\n' "$check_variable" "critical" "$(eval "echo \"\$${check_function}_CURVAL\"")" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
-
-     else
-        alarm_success $check_variable "FAIL COUNT: $FAILCOUNT: $(eval "echo \"\$${check_function}_PAYLOAD\"")"
-        eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
-        echo "alarm success"
-      
-
-
-     fi
-  fi
-
-
+      if [[ $FAILCOUNT -ge $OCCURRENCE ]]; then
+        printf '{"check":"%s","status":"%s","curval":"%s","threshold":"%s"}\n' "$check_variable" "critical" "$(eval "echo \"\$${check_function}_CURVAL\"")" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+      else
+        printf '{"check":"%s","status":"%s","curval":"%s","threshold":"%s"}\n' "$check_variable" "ok" "$(eval "echo \"\$${check_function}_CURVAL\"")" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+      fi
+    fi
+  
   elif [[ $exptype == "text" ]]; then      
-     #debug echo "the text part"  
+    #debug echo "the text part"  
+    eval "$check_function"
+    if [[ $? -eq 0 ]]; then
+      #alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
+      echo $check_variable "|" "ok" "|" "$(eval "echo \"\$${check_function}_CURVAL\"")" "|" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+      reset_fail_count $check_function
+    else
+      add_fail_count $check_function
 
-       eval "$check_function"
-  if [[ $? -eq 0 ]]; then
-     #alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
-     
-     
-     echo $check_variable "|" "ok" "|" "$(eval "echo \"\$${check_function}_CURVAL\"")" "|" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
-
-     reset_fail_count $check_function
-  else
-     add_fail_count $check_function
-
-     if [[ $FAILCOUNT -ge $OCCURRENCE ]]; then
+      if [[ $FAILCOUNT -ge $OCCURRENCE ]]; then
         #alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
         #eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
-       
-          echo $check_variable "|" "critical" "|" "$(eval "echo \"\$${check_function}_CURVAL\"")" "|" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
-
-     else
-        alarm_success $check_variable "FAIL COUNT: $FAILCOUNT: $(eval "echo \"\$${check_function}_PAYLOAD\"")"
-        eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
-        echo "alarm success"
-
-
-
-     fi
-  fi
-
+        echo $check_variable "|" "critical" "|" "$(eval "echo \"\$${check_function}_CURVAL\"")" "|" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+      else
+        echo $check_variable "|" "ok" "|" "$(eval "echo \"\$${check_function}_CURVAL\"")" "|" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+      fi
+    fi
   else
+    echo "Executing check $check_variable"
 
-  
-  echo "Executing check $check_variable"
+    eval "$check_function"
+    if [[ $? -eq 0 ]]; then
+      alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
+      reset_fail_count $check_function
+    else
+      add_fail_count $check_function
 
-  eval "$check_function"
-  if [[ $? -eq 0 ]]; then
-     alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
-     reset_fail_count $check_function
-  else
-     add_fail_count $check_function
-
-     if [[ $FAILCOUNT -ge $OCCURRENCE ]]; then
+      if [[ $FAILCOUNT -ge $OCCURRENCE ]]; then
         alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
         eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
-        
-
-
-     else
+      else
         alarm_success $check_variable "FAIL COUNT: $FAILCOUNT: $(eval "echo \"\$${check_function}_PAYLOAD\"")"
         eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
         echo "alarm success"
-        
-
-                ## added output to  text mmi
-
-
-     fi
+        ## added output to  text mmi
+      fi
+    fi
   fi
-fi  
+
+  exit
+fi
 
 
-
-exit
-
-fi 
-
+### Check all metrics at once in a loop
 while read check_variable; do
   
   eval "test ! -z \$$check_variable"
@@ -406,8 +369,8 @@ while read check_variable; do
   check_function=$(eval "echo \$$check_variable")
   if_function "$check_function"
   if [[ $? -gt 0 ]]; then 
-     alarm_error $check_variable "Check function $check_function not defined!"
-     continue
+    alarm_error $check_variable "Check function $check_function not defined!"
+    continue
   fi
 
   OCCURRENCE=0
@@ -416,101 +379,66 @@ while read check_variable; do
   eval "test ! -z \${${check_variable}_OCCURRENCE+check}" && eval "declare -r ${check_function}_OCCURRENCE=\$${check_variable}_OCCURRENCE" && OCCURRENCE=$(eval "echo \$${check_variable}_OCCURRENCE")
 
 
-
   if [[ $exptype == "json" ]]; then
+    eval "$check_function"
+    if [[ $? -eq 0 ]]; then
+      #printf '{"check":"%s","status":"%s","threshold":"%s"}\n' "$check_variable" "ok" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+      printf '{"check":"%s","status":"%s","curval":"%s","threshold":"%s"}\n' "$check_variable" "ok" "$(eval "echo \"\$${check_function}_CURVAL\"")" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+      reset_fail_count $check_function
+    else
+      add_fail_count $check_function
 
-       eval "$check_function"
-  if [[ $? -eq 0 ]]; then
-     #printf '{"check":"%s","status":"%s","threshold":"%s"}\n' "$check_variable" "ok" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
-     printf '{"check":"%s","status":"%s","curval":"%s","threshold":"%s"}\n' "$check_variable" "ok" "$(eval "echo \"\$${check_function}_CURVAL\"")" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
-     reset_fail_count $check_function
-  else
-     add_fail_count $check_function
-
-     if [[ $FAILCOUNT -ge $OCCURRENCE ]]; then
-                 
-          #printf '{"check":"%s","status":"%s","threshold":"%s"}\n' "$check_variable" "critical" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
-          printf '{"check":"%s","status":"%s","curval":"%s","threshold":"%s"}\n' "$check_variable" "critical" "$(eval "echo \"\$${check_function}_CURVAL\"")" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
-     else
-        alarm_success $check_variable "FAIL COUNT: $FAILCOUNT: $(eval "echo \"\$${check_function}_PAYLOAD\"")"
-        eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
-        echo "alarm success"
-      
-
-
-     fi
-  fi
-
-
+      if [[ $FAILCOUNT -ge $OCCURRENCE ]]; then           
+        #printf '{"check":"%s","status":"%s","threshold":"%s"}\n' "$check_variable" "critical" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+        printf '{"check":"%s","status":"%s","curval":"%s","threshold":"%s"}\n' "$check_variable" "critical" "$(eval "echo \"\$${check_function}_CURVAL\"")" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+      else
+        printf '{"check":"%s","status":"%s","curval":"%s","threshold":"%s"}\n' "$check_variable" "ok" "$(eval "echo \"\$${check_function}_CURVAL\"")" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+      fi
+    fi
+    
   elif [[ $exptype == "text" ]]; then      
-     #debug echo "the text part"  
+    #debug echo "the text part"
+    eval "$check_function"
+    if [[ $? -eq 0 ]]; then
+      #alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
+      #echo $check_variable "|" "ok" "|" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+      echo $check_variable "|" "ok" "|" "$(eval "echo \"\$${check_function}_CURVAL\"")" "|" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+      reset_fail_count $check_function
+    else
+      add_fail_count $check_function
 
-       eval "$check_function"
-  if [[ $? -eq 0 ]]; then
-     #alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
-     
-     #echo $check_variable "|" "ok" "|" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
-     echo $check_variable "|" "ok" "|" "$(eval "echo \"\$${check_function}_CURVAL\"")" "|" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
-     reset_fail_count $check_function
-  else
-     add_fail_count $check_function
-
-     if [[ $FAILCOUNT -ge $OCCURRENCE ]]; then
+      if [[ $FAILCOUNT -ge $OCCURRENCE ]]; then
         #alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
         #eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
-       
-          #echo $check_variable "|" "critical" "|" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
-          echo $check_variable "|" "critical" "|" "$(eval "echo \"\$${check_function}_CURVAL\"")" "|" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
-
-     else
-        alarm_success $check_variable "FAIL COUNT: $FAILCOUNT: $(eval "echo \"\$${check_function}_PAYLOAD\"")"
-        eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
-        echo "alarm success"
-
-     fi
-  fi
-
+        #echo $check_variable "|" "critical" "|" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+        echo $check_variable "|" "critical" "|" "$(eval "echo \"\$${check_function}_CURVAL\"")" "|" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+      else
+        echo $check_variable "|" "ok" "|" "$(eval "echo \"\$${check_function}_CURVAL\"")" "|" "$(eval "echo \"\$${check_function}_THRESHOLD\"")"
+      fi
+    fi
   else
+    echo "Executing check $check_variable"
 
-  
-  echo "Executing check $check_variable"
-
-  eval "$check_function"
-  if [[ $? -eq 0 ]]; then
-     alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
+    eval "$check_function"
+    if [[ $? -eq 0 ]]; then
+      alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
      
-     reset_fail_count $check_function
+      reset_fail_count $check_function
+    else
+      add_fail_count $check_function
 
-  else
-     add_fail_count $check_function
-
-     if [[ $FAILCOUNT -ge $OCCURRENCE ]]; then
+      if [[ $FAILCOUNT -ge $OCCURRENCE ]]; then
         alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOAD\"")"
         eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_critical $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
-       
-
-     else
+      else
         alarm_success $check_variable "FAIL COUNT: $FAILCOUNT: $(eval "echo \"\$${check_function}_PAYLOAD\"")"
         eval "test ! -z \${${check_function}_PAYLOADLONG+check}" && alarm_success $check_variable "$(eval "echo \"\$${check_function}_PAYLOADLONG\"")"
         echo "alarm success"
-                ## added output to  text mmi
-      
-
-     fi
+        ## added output to  text mmi
+      fi
+    fi
   fi
-fi  
 
 done < <(compgen -A variable | grep -E "^PG_CHECK" | grep -vE "(_THRESHOLD|_OCCURRENCE)$")
 
-
-
-
-
-
-
-
-
-
-
 exit 0
-
