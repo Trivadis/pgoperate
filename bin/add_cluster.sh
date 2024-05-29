@@ -425,7 +425,7 @@ fi
 if [[ $SILENT_MODE == "YES" ]]; then
   REPLY=$INPUT_PG_START_SCRIPT
 else 
-  read -p "If you dont want standart startup command to start your cluster, then provide custom start script: "
+  read -p "If you do not want the standard startup command to start your cluster, then provide a custom start script: "
 fi
 echo
 PG_START_SCRIPT=$REPLY
@@ -433,7 +433,7 @@ PG_START_SCRIPT=$REPLY
 if [[ $SILENT_MODE == "YES" ]]; then
   REPLY=$INPUT_PG_STOP_SCRIPT
 else 
-  read -p "If you dont want standart stop command to stop your cluster, then provide custom stop script: "
+  read -p "If you do not want the standard stop command to stop your cluster, then provide a custom stop script: "
 fi
 echo
 PG_STOP_SCRIPT=$REPLY
