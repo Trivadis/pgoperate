@@ -146,7 +146,7 @@ fi
             else # 1
 
                if [[ -z $PG_START_SCRIPT ]]; then
-                 $BINHOME/bin/pg_ctl start -D ${PGDATA} -l $PGSQL_BASE/log/server.log -s -o "-p ${PGPORT} --config_file=$PGSQL_BASE/etc/postgresql.conf $ADDITIONAL_START_OPTIONS" -w -t 300
+                 $BINHOME/bin/pg_ctl start -D ${PGDATA} -l $PGSQL_BASE/log/server.log -s -o "-p ${PGPORT} --config_file=$PGSQL_BASE/etc/postgresql.conf $ADDITIONAL_START_OPTIONS --cluster_name=${ALIAS}" -w -t 300
                  RC=$?
                else
                  $PG_START_SCRIPT

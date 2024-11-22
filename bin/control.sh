@@ -84,7 +84,7 @@ trap on_exit EXIT
 start_local() {
   local RC=0
   if [[ -z $PG_START_SCRIPT ]]; then
-    pg_ctl start -D ${PGDATA} -l $PGSQL_BASE/log/server.log -s -o "-p ${PGPORT} --config_file=$PGSQL_BASE/etc/postgresql.conf $ADDITIONAL_START_OPTIONS" -w -t 300
+    pg_ctl start -D ${PGDATA} -l $PGSQL_BASE/log/server.log -s -o "-p ${PGPORT} --config_file=$PGSQL_BASE/etc/postgresql.conf $ADDITIONAL_START_OPTIONS --cluster_name=${PGBASENV_ALIAS}" -w -t 300
     RC=$?
   else
     $PG_START_SCRIPT
